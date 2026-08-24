@@ -10,8 +10,8 @@ import (
 )
 
 
-func runDeploy() error {
-	cfg, err := config.LoadConfig("deploy.yaml")
+func runDeploy(file string) error {
+	cfg, err := config.LoadConfig(file)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -38,42 +38,23 @@ func runDeploy() error {
 }
 
 var deployCmd = &cobra.Command{
-	Use: "deploy",
+	Use: "deploy [path]",
 	Short: "Runs the final deployment configuration.",
+
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.LoadConfig("deploy.yaml");
-		if err != nil {
-			return fmt.Errorf("loading configuration: %w", err)
-		}
-
-		fmt.Printf(
-			"Connecting to %s@%s...\n",
-			cfg.Server.User,
-			cfg.Server.Host,
-		)
-
-		client, err := rittaSSH.Connect(
-			cfg.Server.Host,
-			cfg.Server.User,
-			cfg.Server.Key,
-			cfg.Server.Port,
-		)
-		if err != nil {
-			return err
-		}
-
-		defer client.Close();
-
-		fmt.Println("Connected . . .  :)")
-
-		err = client.Run("uname -a")
-		if err != nil {
-			return err
-		}
-		return nil
+		return runDeploy(configFile);
 	},
 }
 
+
 func init() {
 	rootCmd.AddCommand(deployCmd);
+	deployCmd.Flags().StringVarP(
+		&configFile,
+		"file",
+		"f",
+		config.DefaultConfigFile,
+		"Path for the Ritta deployment configuration",
+	)
+
 }

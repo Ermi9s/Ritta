@@ -1,4 +1,4 @@
-package proxy
+package proxyproviders
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ func NewNginx(client *rittaSSH.Client) *Nginx {
 	}
 }
 
-func (n *Nginx) ensureInstalled() error {
+func (n *Nginx) EnsureInstalled() error {
 	if err := n.SSH.Run("command -v nginx >/dev/null 2>&1"); err == nil {
 		return nil
 	}
@@ -26,7 +26,7 @@ func (n *Nginx) ensureInstalled() error {
 	return fmt.Errorf("nginx is not installed; install it in the setup script")
 }
 
-func (n *Nginx) configureDomain(domain config.Domain) error {
+func (n *Nginx) ConfigureDomain(domain config.Domain) error {
 	configContent := generateConfig(domain)
 
 	path := fmt.Sprintf("/etc/nginx/conf.d/ritta-%s.conf", domain.Host)
@@ -93,7 +93,7 @@ func generateConfig(domain config.Domain) string {
 	return builder.String()
 }
 
-func (n *Nginx) test() error {
+func (n *Nginx) Test() error {
 	fmt.Println("Testing Nginx configuration...")
 
 	if err := n.SSH.Run("sudo nginx -t"); err != nil {
@@ -103,7 +103,7 @@ func (n *Nginx) test() error {
 	return nil
 }
 
-func (n *Nginx) reload() error {
+func (n *Nginx) Reload() error {
 	return n.SSH.Run(
 		"sudo systemctl enable --now nginx && sudo systemctl reload nginx",
 	)
@@ -117,21 +117,21 @@ func (n *Nginx) Configure(domains []config.Domain) error {
 
 	fmt.Println("Configuring Nginx...")
 
-	if err := n.ensureInstalled(); err != nil {
+	if err := n.EnsureInstalled(); err != nil {
 		return err
 	}
 
 	for _, domain := range domains {
-		if err := n.configureDomain(domain); err != nil {
+		if err := n.ConfigureDomain(domain); err != nil {
 			return fmt.Errorf("configuring domain %s: %w", domain.Host, err)
 		}
 	}
 
-	if err := n.test(); err != nil {
+	if err := n.Test(); err != nil {
 		return err
 	}
 
-	if err := n.reload(); err != nil {
+	if err := n.Reload(); err != nil {
 		return fmt.Errorf("reloading nginx: %w", err)
 	}
 

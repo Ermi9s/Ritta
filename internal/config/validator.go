@@ -7,8 +7,12 @@ import (
 
 
 func Validate(cfg *Config) error {
-	if cfg.RootDirectory == "" {
-		return errors.New("root_directory is required")
+	if cfg.RemoteProjectRoot == "" {
+		return errors.New("remote project root is required")
+	}
+
+	if cfg.LocalProjectRoot == "" {
+		return errors.New("local project root is required")
 	}
 
 	if cfg.Server.Host == "" {

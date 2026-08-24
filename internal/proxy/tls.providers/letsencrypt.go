@@ -1,4 +1,4 @@
-package providers
+package tlsproviders
 
 import (
 	"fmt"
@@ -13,10 +13,7 @@ func NewLetsEncrypt() *LetsEncrypt {
 	return &LetsEncrypt{}
 }
 
-func (l *LetsEncrypt) Configure(
-	client *rittaSSH.Client,
-	cfg *config.Config,
-) error {
+func (l *LetsEncrypt) Configure(client *rittaSSH.Client, cfg *config.Config) error {
 	if cfg.TLS == nil {
 		return nil
 	}
@@ -38,15 +35,8 @@ func (l *LetsEncrypt) Configure(
 	return nil
 }
 
-func (l *LetsEncrypt) configureDomain(
-	client *rittaSSH.Client,
-	host string,
-	email string,
-) error {
-	fmt.Printf(
-		"Requesting TLS certificate for %s...\n",
-		host,
-	)
+func (l *LetsEncrypt) configureDomain(client *rittaSSH.Client, host string, email string) error {
+	fmt.Printf("Requesting TLS certificate for %s...\n", host)
 
 	command := fmt.Sprintf(
 		"sudo certbot --nginx "+
@@ -60,17 +50,10 @@ func (l *LetsEncrypt) configureDomain(
 	)
 
 	if err := client.Run(command); err != nil {
-		return fmt.Errorf(
-			"obtaining TLS certificate for %s: %w",
-			host,
-			err,
-		)
+		return fmt.Errorf("obtaining TLS certificate for %s: %w", host, err)
 	}
 
-	fmt.Printf(
-		":) TLS enabled for %s\n",
-		host,
-	)
+	fmt.Printf(":) TLS enabled for %s\n", host)
 
 	return nil
 }

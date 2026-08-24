@@ -1,17 +1,18 @@
 package config
 
 type Config struct {
-	Version       int        `yaml:"version"`
-	RootDirectory string     `yaml:"root_directory"`
-	SetupConfig   SetupConfig `yaml:"setup_config"`
+	LocalProjectRoot string 	`yalm:"local_project_root"`
+	RemoteProjectRoot string     `yaml:"remote_project_root"`
 	Source        Source     `yaml:"source"`
 	Server        Server     `yaml:"server"`
-	Health        *Health    `yaml:"health"`
-	Env           EnvConfig  `yaml:"env"`
+	SetupConfig   SetupConfig `yaml:"setup_config"`
+	ScanEnv			bool      `yaml:"scan_env"`
+	File           []File  `yaml:"File"`
 	Build         *Command   `yaml:"build"`
 	Run           *Command   `yaml:"run"`
-	Domains       []Domain   `yaml:"domains"`
+	Health        *Health    `yaml:"health"`
 	Proxy         *Proxy     `yaml:"proxy"`
+	Domains       []Domain   `yaml:"domains"`
 	TLS           *TLS       `yaml:"tls"`
 }
 
@@ -28,12 +29,7 @@ type Server struct {
 	Key  string `yaml:"key"`
 }
 
-type EnvConfig struct {
-	Scan  bool      `yaml:"scan"`
-	Files []EnvFile `yaml:"files"`
-}
-
-type EnvFile struct {
+type File struct {
 	From string `yaml:"from"`
 	To   string `yaml:"to"`
 }

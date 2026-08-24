@@ -3,35 +3,20 @@ package proxy
 import (
 	"fmt"
 	"ritta/internal/config"
+	tlsproviders "ritta/internal/proxy/tls.providers"
 	rittaSSH "ritta/internal/ssh"
-	"ritta/internal/proxy/providers"
 )
 
-type TLSProvider interface {
-	Configure(
-		client *rittaSSH.Client,
-		cfg *config.Config,
-	) error
-}
 
-func ConfigureTLS(
-	client *rittaSSH.Client,
-	cfg *config.Config,
-) error {
+func NewTLSProvider(client *rittaSSH.Client, cfg *config.Config) (TLSProvider, error) {
 	if cfg.TLS == nil {
-		return nil
+		return nil, fmt.Errorf("TLS is not configured");
 	}
 
 	switch cfg.TLS.Provider {
 	case "letsencrypt":
-		provider := providers.NewLetsEncrypt()
-
-		return provider.Configure(client, cfg)
-
+		return tlsproviders.NewLetsEncrypt(), nil;
 	default:
-		return fmt.Errorf(
-			"unsupported TLS provider: %s",
-			cfg.TLS.Provider,
-		)
+		return nil, fmt.Errorf("unsupported TLS provider: %s", cfg.TLS.Provider);
 	}
 }

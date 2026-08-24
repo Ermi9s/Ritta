@@ -1,0 +1,28 @@
+remote_project_root: ~/srv/
+localprojectroot: ./
+setup_config:
+    package_manager: apt
+    script: ./rittaScript.sh
+source:
+    type: existing
+    repository: ""
+    branch: ""
+server:
+    host: ""
+    user: deploy
+    port: 22
+    key: ~/.ssh/id_ed25519
+health:
+    command: ""
+scan_env: true
+File: []
+build:
+    command: ""
+run:
+    command: ""
+domains: []
+proxy:
+    provider: Nginx
+tls:
+    provider: letsencrypt
+    email: ""

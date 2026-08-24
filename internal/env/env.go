@@ -9,7 +9,7 @@ import (
 	rittaSSH "ritta/internal/ssh"
 )
 
-type EnvFile struct {
+type File struct {
 	From string
 	To   string
 }
@@ -20,26 +20,26 @@ func Deploy(client *rittaSSH.Client, cfg *config.Config) error {
 		return fmt.Errorf("getting project directory: %w", err)
 	}
 
-	files := make(map[string]EnvFile)
+	files := make(map[string]File)
 
-	// Automatically discover .env files.
-	if cfg.Env.Scan {
+	//automatically discover .env files.
+	if cfg.ScanEnv {
 		discovered, err := Scan(projectRoot)
 		if err != nil {
 			return fmt.Errorf("scanning environment files: %w", err)
 		}
 
 		for _, path := range discovered {
-			files[path] = EnvFile{
+			files[path] = File{
 				From: path,
 				To:   path,
 			}
 		}
 	}
 
-	// Explicit files override scanned files.
-	for _, file := range cfg.Env.Files {
-		files[file.From] = EnvFile{
+	//explicit files override scanned files.
+	for _, file := range cfg.File {
+		files[file.From] = File{
 			From: file.From,
 			To:   file.To,
 		}
@@ -51,15 +51,8 @@ func Deploy(client *rittaSSH.Client, cfg *config.Config) error {
 	}
 
 	for _, file := range files {
-		localPath := filepath.Join(
-			projectRoot,
-			file.From,
-		)
-
-		remotePath := filepath.Join(
-			cfg.RootDirectory,
-			file.To,
-		)
+		localPath := filepath.Join(projectRoot, file.From)
+		remotePath := filepath.Join(cfg.RemoteProjectRoot, file.To)
 
 		if _, err := os.Stat(localPath); err != nil {
 			return fmt.Errorf("environment file %q not found: %w", localPath, err)

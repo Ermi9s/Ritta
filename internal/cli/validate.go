@@ -8,13 +8,12 @@ import (
 )
 
 
-
-
 var validateCmd = &cobra.Command{
-	Use: "validate",
+	Use: "validate [path]",
 	Short: "Validates a deployment configuration.",
+
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.LoadConfig("deploy.yaml");
+		cfg, err := config.LoadConfig(configFile);
 
 		if err != nil {
 			return fmt.Errorf("Error loading configuration: %w", err);
@@ -25,7 +24,7 @@ var validateCmd = &cobra.Command{
 		}
 
 		fmt.Println("Configuration loaded successfully.")
-		fmt.Printf("Project location: %s\n", cfg.RootDirectory)
+		fmt.Printf("Project location: %s\n", cfg.RemoteProjectRoot)
 		fmt.Printf("Server: %s@%s\n", cfg.Server.User, cfg.Server.Host)
 
 		return nil;
@@ -34,4 +33,11 @@ var validateCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(validateCmd);
+	validateCmd.Flags().StringVarP(
+		&configFile,
+		"file",
+		"f",
+		config.DefaultConfigFile,
+		"Path for the Ritta deployment configuration",
+	)
 }
