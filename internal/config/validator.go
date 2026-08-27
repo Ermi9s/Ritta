@@ -16,11 +16,11 @@ func Validate(cfg *Config) error {
 	}
 
 	if cfg.Server.Host == "" {
-		return errors.New("server.host is required")
+		return errors.New("server host is required")
 	}
 
 	if cfg.Server.User == "" {
-		return errors.New("server.user is required")
+		return errors.New("server user is required")
 	}
 
 	switch cfg.Source.Type {

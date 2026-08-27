@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"ritta/internal/config"
+	"ritta/internal/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -19,13 +20,26 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("initializing Ritta: %w", err)
 		}
 		
-		fmt.Printf(":) Created Ritta configuration: %s\n", configFile)
-		fmt.Println()
-		fmt.Println("Next steps:")
-		fmt.Printf("  Edit manually or run: ritta letsconfig %s\n", configFile)
-		fmt.Printf("  Validate:              ritta validate %s\n", configFile)
-		fmt.Printf("  Deploy:                ritta deploy %s\n", configFile)
+	ui.Success("Configuration created successfully")
 
+	fmt.Println()
+
+	fmt.Println(ui.LabelStyle.Render("  Files"))
+	fmt.Printf("    %s\n", ui.HomeNormalStyle.Render("rittaConfig.yaml"))
+	fmt.Printf("    %s\n", ui.HomeNormalStyle.Render("rittaScript.sh"))
+
+	fmt.Print("\n\n")
+
+	fmt.Println(ui.LabelStyle.Render("  Next steps"))
+
+	fmt.Println("    1. Edit configuration")
+	ui.Command("ritta letsconfig rittaConfig.yaml")
+
+	fmt.Println("    2. Validate configuration")
+	ui.Command("ritta validate rittaConfig.yaml")
+
+	fmt.Println("    3. Deploy")
+	ui.Command("ritta deploy rittaConfig.yaml")
 		return nil
 	},
 }
@@ -36,9 +50,9 @@ func init() {
 
 	initCmd.Flags().StringVarP(
 		&configFile,
-		"file",
-		"f",
-		config.DefaultConfigFile,
+		"path",
+		"p",
+		"./",
 		"Path for the Ritta deployment configuration",
 	)
 

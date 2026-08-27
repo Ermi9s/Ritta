@@ -6,41 +6,83 @@ import (
 	"path/filepath"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/term"
+	"errors"
 )
 
 type Client struct {
 	client *gossh.Client
 }
 
-
 func Connect(host, user, keyPath string, port int) (*Client, error) {
-	keyPath, err := expandHome(keyPath);
+	keyPath, err := expandHome(keyPath)
 	if err != nil {
-		return nil, err;
+		return nil, err
 	}
 
-	key, err := os.ReadFile(keyPath);
+	key, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading SSH key: %w", err)
 	}
 
-	signer, err := gossh.ParsePrivateKey(key);
+	signer, err := gossh.ParsePrivateKey(key)
+
 	if err != nil {
-		return nil, fmt.Errorf("parsing SSH key: %w", err)
+		var passphraseErr *gossh.PassphraseMissingError
+
+		if errors.As(err, &passphraseErr) {
+			fmt.Print("SSH key passphrase: ")
+
+			passphrase, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Println()
+
+			if err != nil {
+				return nil, fmt.Errorf(
+					"reading SSH passphrase: %w",
+					err,
+				)
+			}
+
+			signer, err = gossh.ParsePrivateKeyWithPassphrase(
+				key,
+				passphrase,
+			)
+
+			if err != nil {
+				return nil, fmt.Errorf(
+					"parsing SSH key with passphrase: %w",
+					err,
+				)
+			}
+		} else {
+			return nil, fmt.Errorf(
+				"parsing SSH key: %w",
+				err,
+			)
+		}
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("getting home directory: %w", err)
+		return nil, fmt.Errorf(
+			"getting home directory: %w",
+			err,
+		)
 	}
 
-	knownHosts := filepath.Join(home, ".ssh", "known_hosts")
+	knownHosts := filepath.Join(
+		home,
+		".ssh",
+		"known_hosts",
+	)
 
 	hostKeyCallback, err := knownhosts.New(knownHosts)
 	if err != nil {
-		return nil, fmt.Errorf("loading known_hosts: %w", err)
+		return nil, fmt.Errorf(
+			"loading known_hosts: %w",
+			err,
+		)
 	}
-
 
 	config := &gossh.ClientConfig{
 		User: user,
@@ -50,13 +92,23 @@ func Connect(host, user, keyPath string, port int) (*Client, error) {
 		HostKeyCallback: hostKeyCallback,
 	}
 
-	address := fmt.Sprintf("%s:%d", host, port);
+	address := fmt.Sprintf("%s:%d", host, port)
 
-	client, err := gossh.Dial("tcp", address, config);
+	client, err := gossh.Dial(
+		"tcp",
+		address,
+		config,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"connecting to server: %w",
+			err,
+		)
+	}
 
 	return &Client{
 		client: client,
-	}, nil;
+	}, nil
 }
 
 func expandHome(path string) (string, error) {

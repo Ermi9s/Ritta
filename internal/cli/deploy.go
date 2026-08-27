@@ -5,6 +5,7 @@ import (
 	"ritta/internal/config"
 	"ritta/internal/deploy"
 	rittaSSH "ritta/internal/ssh"
+	"ritta/internal/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -20,7 +21,7 @@ func runDeploy(file string) error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
-	fmt.Printf("Connecting to %s@%s...\n", cfg.Server.User, cfg.Server.Host)
+	ui.Info(fmt.Sprintf("Connecting to %s@%s...\n", cfg.Server.User, cfg.Server.Host))
 
 	client, err := rittaSSH.Connect(cfg.Server.Host, cfg.Server.User,cfg.Server.Key, cfg.Server.Port);
 
@@ -30,8 +31,9 @@ func runDeploy(file string) error {
 
 	defer client.Close()
 
-	fmt.Println("SSH connected :)")
-
+	ui.Success("SSH connected :)")
+	ui.Info(fmt.Sprintf("Connected to %s@%s\n", cfg.Server.User, cfg.Server.Host))
+	
 	deployer := deploy.New(cfg, client)
 
 	return deployer.Deploy()
@@ -53,7 +55,7 @@ func init() {
 		&configFile,
 		"file",
 		"f",
-		config.DefaultConfigFile,
+		"./",
 		"Path for the Ritta deployment configuration",
 	)
 

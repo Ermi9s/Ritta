@@ -1,14 +1,16 @@
-# Ritta deployment configuration
+package config
+
+const DefaultConfig = `# Ritta deployment configuration
 
 # Local project directory
-local_project_root: ~/path
+local_project_root: ./
 
 # Directory where the project will be deployed
 remote_project_root: ~/srv/
 
-# Setup script to run on the server
-# You can modify this, default is set up with apt package manager and default installs
 setup_config:
+  # Setup script to run on the server
+  # You can modify this, default is set up with apt package manager and default installs
   script: ./rittaScript.sh
 
 source:
@@ -23,13 +25,13 @@ source:
 
   # Vps info and your ssh key for log in
 server:
-  host: "104.154.149.86"
-  user: ayeleermias1
+  host: ""
+  user: deploy
   port: 22
-  key: ~/.ssh/id_ed25519 
+  key: ~/.ssh/id_ed25519
 
 
-# Optional health check command if you have
+  # Optional health check command if you have
 health:
   command: ""
 
@@ -46,11 +48,11 @@ file:
 
   # Your application specific build command 
 build:
-  command: "a"
+  command: ""
 
 # Your application specific run command
 run:
-  command: "a"
+  command: ""
 
 
   # Domains to expose through the reverse proxy(optional)
@@ -70,3 +72,4 @@ proxy:
 tls:
   provider: letsencrypt
   email: ""
+`

@@ -1,19 +1,19 @@
 package config
 
 type Config struct {
-	LocalProjectRoot string 	`yalm:"local_project_root"`
-	RemoteProjectRoot string     `yaml:"remote_project_root"`
-	Source        Source     `yaml:"source"`
-	Server        Server     `yaml:"server"`
-	SetupConfig   SetupConfig `yaml:"setup_config"`
-	ScanEnv			bool      `yaml:"scan_env"`
-	File           []File  `yaml:"File"`
-	Build         *Command   `yaml:"build"`
-	Run           *Command   `yaml:"run"`
-	Health        *Health    `yaml:"health"`
-	Proxy         *Proxy     `yaml:"proxy"`
-	Domains       []Domain   `yaml:"domains"`
-	TLS           *TLS       `yaml:"tls"`
+	LocalProjectRoot  string      `yaml:"local_project_root"`
+	RemoteProjectRoot string      `yaml:"remote_project_root"`
+	Source            Source      `yaml:"source"`
+	Server            Server      `yaml:"server"`
+	SetupConfig       SetupConfig `yaml:"setup_config"`
+	ScanEnv           bool        `yaml:"scan_env"`
+	File              []File      `yaml:"File"`
+	Build             *Command    `yaml:"build"`
+	Run               *Command    `yaml:"run"`
+	Health            *Health     `yaml:"health"`
+	Proxy             *Proxy      `yaml:"proxy"`
+	Domains           []Domain    `yaml:"domains"`
+	TLS               *TLS        `yaml:"tls"`
 }
 
 type Source struct {
@@ -58,6 +58,5 @@ type Health struct {
 }
 
 type SetupConfig struct {
-	PackageManager string `yaml:"package_manager"`
-	Script         string `yaml:"script"`
+	Script string `yaml:"script"`
 }
