@@ -43,42 +43,38 @@ func CreateTemplate(path string) error {
 
 	configPath := filepath.Join(path, filename)
 	scriptPath := filepath.Join(path, setupScriptName)
-	configExsits := false
+	configExists := false
 	scriptExists := false
 
-	if _, err := os.Stat(configPath); err == nil {
-		configExsits = true
-		ui.WarningStyle.Render(fmt.Sprintf("configuration already exists: %s", configPath))
-
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf(ui.ErrorStyle.Render(fmt.Sprintf("checking configuration path: %v", err)))
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fmt.Errorf("%s", ui.ErrorStyle.Render(fmt.Sprintf("creating configuration directory: %v", err)))
 	}
 
-	configDir := filepath.Dir(path)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf(ui.ErrorStyle.Render(fmt.Sprintf("creating configuration directory: %v", err)))
+	if _, err := os.Stat(configPath); err == nil {
+		configExists = true
+		ui.WarningStyle.Render(fmt.Sprintf("configuration already exists: %s", configPath))
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("%s", ui.ErrorStyle.Render(fmt.Sprintf("checking configuration path: %v", err)))
 	}
 
 	if _, err := os.Stat(scriptPath); err == nil {
 		scriptExists = true
 		ui.WarningStyle.Render(fmt.Sprintf("setup script already exists: %s", scriptPath))
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf(ui.ErrorStyle.Render(fmt.Sprintf("checking setup script: %v", err)))
+		return fmt.Errorf("%s", ui.ErrorStyle.Render(fmt.Sprintf("checking setup script: %v", err)))
 	}
 
-	if !configExsits {
-		err := os.WriteFile(filename, []byte(DefaultConfig), 0644)
+	if !configExists {
+		err := os.WriteFile(configPath, []byte(DefaultConfig), 0644)
 		if err != nil {
-			return fmt.Errorf(ui.ErrorStyle.Render(fmt.Sprintf("creating %s: %v", filename, err)))
+			return fmt.Errorf("%s", ui.ErrorStyle.Render(fmt.Sprintf("creating %s: %v", configPath, err)))
 		}
 	}
 
 	if !scriptExists {
 		// Generate rittaScript.sh.
 		if err := os.WriteFile(scriptPath, []byte(setupScriptTemplate), 0755); err != nil {
-			_ = os.Remove(path)
-
-			return fmt.Errorf(ui.ErrorStyle.Render(fmt.Sprintf("writing setup script: %v", err)))
+			return fmt.Errorf("%s", ui.ErrorStyle.Render(fmt.Sprintf("writing setup script: %v", err)))
 		}
 	}
 	return nil

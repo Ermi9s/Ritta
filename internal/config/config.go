@@ -7,7 +7,7 @@ type Config struct {
 	Server            Server      `yaml:"server"`
 	SetupConfig       SetupConfig `yaml:"setup_config"`
 	ScanEnv           bool        `yaml:"scan_env"`
-	File              []File      `yaml:"File"`
+	File              []File      `yaml:"file"`
 	Build             *Command    `yaml:"build"`
 	Run               *Command    `yaml:"run"`
 	Health            *Health     `yaml:"health"`

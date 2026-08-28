@@ -2,24 +2,22 @@ package cli
 
 import (
 	"fmt"
-	"time"
+	"os"
+
 	"ritta/internal/config"
 	"ritta/internal/deploy"
 	"ritta/internal/logger"
 	rittaSSH "ritta/internal/ssh"
 	"ritta/internal/ui"
-	"os"
-	"golang.org/x/term"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
-const actionDelay = 500 * time.Millisecond // just to make things epic
 var scanEnv bool
 
 func runDeploy(file string) error {
 	log := logger.New(1000)
-	time.Sleep(actionDelay)
 	cfg, err := config.LoadConfig(file)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -28,7 +26,7 @@ func runDeploy(file string) error {
 	if err := config.Validate(cfg); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}
-	time.Sleep(actionDelay)
+
 	log.Infof("Connecting to %s@%s...", cfg.Server.User, cfg.Server.Host)
 
 	client, err := rittaSSH.Connect(cfg.Server.Host, cfg.Server.User, cfg.Server.Key, cfg.Server.Port, log)
@@ -38,22 +36,33 @@ func runDeploy(file string) error {
 	}
 	defer client.Close()
 
-	time.Sleep(actionDelay)
 	log.Successf("SSH connected to %s@%s", cfg.Server.User, cfg.Server.Host)
+
+	lockDir := fmt.Sprintf("/tmp/ritta-%x.lock", cfg.RemoteProjectRoot)
+	if err := client.Run(fmt.Sprintf("mkdir %s 2>/dev/null", lockDir)); err != nil {
+		return fmt.Errorf("another deployment is already in progress (lock %s exists)", lockDir)
+	}
+	defer func() {
+		_ = client.Run(fmt.Sprintf("rmdir %s 2>/dev/null || rm -rf %s", lockDir, lockDir))
+	}()
 
 	fmt.Printf("Sudo password for %s@%s: ", cfg.Server.User, cfg.Server.Host)
 
-	sudoPassword, err := term.ReadPassword(int(os.Stdin.Fd()))
+	sudoPasswordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
 
 	if err != nil {
 		return fmt.Errorf("reading sudo password: %w", err)
 	}
 
-	client.SetSudoPassword(string(sudoPassword))
+	sudoPassword := string(sudoPasswordBytes)
+	for i := range sudoPasswordBytes {
+		sudoPasswordBytes[i] = 0
+	}
 
+	client.SetSudoPassword(sudoPassword)
 
-	if err := client.AuthenticateSudo(string(sudoPassword)); err != nil {
+	if err := client.AuthenticateSudo(sudoPassword); err != nil {
 		return err
 	}
 

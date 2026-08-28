@@ -27,7 +27,7 @@ func (n *Nginx) EnsureInstalled() error {
 }
 
 func (n *Nginx) ConfigureDomain(domain config.Domain) error {
-	configContent := generateConfig(domain)
+	configContent := GenerateConfig(domain)
 
 	path := fmt.Sprintf("/etc/nginx/conf.d/ritta-%s.conf", domain.Host)
 	command := fmt.Sprintf("printf '%%s' %q | sudo tee %q >/dev/null", configContent, path)
@@ -41,52 +41,22 @@ func (n *Nginx) ConfigureDomain(domain config.Domain) error {
 	return nil
 }
 
-func generateConfig(domain config.Domain) string {
+func GenerateConfig(domain config.Domain) string {
 	var builder strings.Builder
 
 	builder.WriteString("server {\n")
 	builder.WriteString("    listen 80;\n")
 	builder.WriteString("    listen [::]:80;\n")
 	builder.WriteString("\n")
-
-	builder.WriteString(
-		fmt.Sprintf(
-			"    server_name %s;\n",
-			domain.Host,
-		),
-	)
-
+	builder.WriteString(fmt.Sprintf("    server_name %s;\n", domain.Host))
 	builder.WriteString("\n")
-
 	builder.WriteString("    location / {\n")
-
-	builder.WriteString(
-		fmt.Sprintf(
-			"        proxy_pass http://127.0.0.1:%d;\n",
-			domain.Port,
-		),
-	)
-
-	builder.WriteString(
-		"        proxy_http_version 1.1;\n",
-	)
-
-	builder.WriteString(
-		"        proxy_set_header Host $host;\n",
-	)
-
-	builder.WriteString(
-		"        proxy_set_header X-Real-IP $remote_addr;\n",
-	)
-
-	builder.WriteString(
-		"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n",
-	)
-
-	builder.WriteString(
-		"        proxy_set_header X-Forwarded-Proto $scheme;\n",
-	)
-
+	builder.WriteString(fmt.Sprintf("        proxy_pass http://127.0.0.1:%d;\n", domain.Port))
+	builder.WriteString("        proxy_http_version 1.1;\n")
+	builder.WriteString("        proxy_set_header Host $host;\n")
+	builder.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
+	builder.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
+	builder.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
 	builder.WriteString("    }\n")
 	builder.WriteString("}\n")
 

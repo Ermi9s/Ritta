@@ -2,42 +2,46 @@ package deploy
 
 import (
 	"fmt"
-	"ritta/internal/proxy"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
+
+	"ritta/internal/proxy"
 )
 
-
 func (d *Deployer) configureProxy() error {
-	if len(d.Config.Domains) == 0 {
-		d.log.Info("No domains configured")
+	if len(d.Config.Domains) == 0 || d.Config.Proxy == nil || d.Config.Proxy.Provider == "" {
+		d.log.Info("No reverse proxy or domains configured")
 		return nil
 	}
 
 	proxyProvider := proxy.NewReverseProxy(d.SSH, d.Config)
+	if proxyProvider == nil {
+		return fmt.Errorf("unknown or unsupported proxy provider: %s", d.Config.Proxy.Provider)
+	}
 
 	if err := proxyProvider.Configure(d.Config.Domains); err != nil {
-		return fmt.Errorf("configuring proxy %w", err);
+		return fmt.Errorf("configuring proxy: %w", err)
 	}
 
 	return nil
 }
 
 func (d *Deployer) configureTLS() error {
-	if d.Config.TLS.Provider == "" {
-		d.log.Info("TLS not configured!")
+	if d.Config.TLS == nil || d.Config.TLS.Provider == "" {
+		d.log.Info("TLS not configured")
 		return nil
 	}
-	tlsprovider, err := proxy.NewTLSProvider(d.SSH, d.Config);
+	tlsprovider, err := proxy.NewTLSProvider(d.SSH, d.Config)
 	if err != nil {
-		return fmt.Errorf("creating tls provider: %w", err);
+		return fmt.Errorf("creating tls provider: %w", err)
 	}
-	
-	if err := tlsprovider.Configure(d.SSH, d.Config); err != nil {
-		return fmt.Errorf("configuring tls: %w", err);
-	}
-	return nil;
 
+	if err := tlsprovider.Configure(d.SSH, d.Config); err != nil {
+		return fmt.Errorf("configuring tls: %w", err)
+	}
+	return nil
 }
 
 func (d *Deployer) runSetupScript() error {
@@ -105,6 +109,12 @@ func (d *Deployer) prepareGitSource() error {
 
 	d.log.Info("Preparing Git repository...")
 
+	//store previous commit hash if available for rollback
+	out, err := d.SSH.Output(fmt.Sprintf("cd %q && git rev-parse HEAD 2>/dev/null || true", root))
+	if err == nil {
+		d.prevCommit = strings.TrimSpace(out)
+	}
+
 	command := fmt.Sprintf(`
 	if [ -d %q/.git ]; then
 		cd %q &&
@@ -112,17 +122,17 @@ func (d *Deployer) prepareGitSource() error {
 		git checkout %q &&
 		git reset --hard origin/%q
 	else
-		cd ~/%q &&
+		mkdir -p %q &&
+		cd %q &&
 		git clone --branch %q %q .
 	fi
-	`, root, root, branch, branch, root, branch, repository)
+	`, root, root, branch, branch, root, root, branch, repository)
 
 	return d.SSH.Run(command)
 }
 
 func (d *Deployer) build() error {
-	if d.Config.Build == nil ||
-		d.Config.Build.Command == "" {
+	if d.Config.Build == nil || d.Config.Build.Command == "" {
 		d.log.Info("No build command configured")
 		return nil
 	}
@@ -134,34 +144,71 @@ func (d *Deployer) build() error {
 }
 
 func (d *Deployer) run() error {
-	if d.Config.Run == nil ||
-		d.Config.Run.Command == "" {
+	if d.Config.Run == nil || d.Config.Run.Command == "" {
 		return fmt.Errorf("run command is required")
 	}
 
 	d.log.Info("Starting application...")
-	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Run.Command)
+	runCmd := strings.TrimSpace(d.Config.Run.Command)
+
+	isDaemon := strings.HasSuffix(runCmd, "&") ||
+		strings.HasPrefix(runCmd, "systemctl") ||
+		strings.HasPrefix(runCmd, "service") ||
+		strings.HasPrefix(runCmd, "pm2") ||
+		strings.HasPrefix(runCmd, "docker") ||
+		strings.HasPrefix(runCmd, "nohup")
+
+	var command string
+	if isDaemon {
+		command = fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, runCmd)
+	} else {
+		command = fmt.Sprintf("cd %q && (nohup %s > ritta-app.log 2>&1 &)", d.Config.RemoteProjectRoot, runCmd)
+	}
 
 	return d.SSH.Run(command)
 }
 
 func (d *Deployer) healthCheck() error {
-	if d.Config.Health == nil ||
-		d.Config.Health.Command == "" {
+	if d.Config.Health == nil || d.Config.Health.Command == "" {
 		d.log.Info("No health check configured")
 		return nil
 	}
 
 	d.log.Info("Checking application health...")
-
 	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Health.Command)
 
-	if err := d.SSH.Run(command); err != nil {
-		return fmt.Errorf("health check failed: %w", err)
+	maxAttempts := 15
+	pollInterval := 2 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		d.log.Infof("Running health check (attempt %d/%d)...", attempt, maxAttempts)
+		if err := d.SSH.Run(command); err == nil {
+			d.log.Success("Application is healthy :)")
+			return nil
+		}
+		if attempt < maxAttempts {
+			time.Sleep(pollInterval)
+		}
 	}
 
-	d.log.Success("Application is healthy :)")
-
-	return nil
+	return fmt.Errorf("health check failed after %d attempts", maxAttempts)
 }
 
+func (d *Deployer) rollback() {
+	if d.prevCommit == "" || d.Config.Source.Type != "git" {
+		return
+	}
+	d.log.Warningf("Rolling back to previous commit %s...", d.prevCommit)
+	rollbackCmd := fmt.Sprintf("cd %q && git checkout %q", d.Config.RemoteProjectRoot, d.prevCommit)
+	if err := d.SSH.Run(rollbackCmd); err != nil {
+		d.log.Errorf("Rollback failed: %v", err)
+		return
+	}
+	if d.Config.Build != nil && d.Config.Build.Command != "" {
+		_ = d.build()
+	}
+	if d.Config.Run != nil && d.Config.Run.Command != "" {
+		_ = d.run()
+	}
+	d.log.Success("Rollback completed")
+}

@@ -1,16 +1,18 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
+
 	"ritta/internal/logger"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
-	"errors"
-	"io"
-	"strings"
 )
 
 type Client struct {
@@ -96,6 +98,7 @@ func Connect(host, user, keyPath string, port int, log *logger.Logger) (*Client,
 			gossh.PublicKeys(signer),
 		},
 		HostKeyCallback: hostKeyCallback,
+		Timeout:         30 * time.Second,
 	}
 
 	address := fmt.Sprintf("%s:%d", host, port)
@@ -120,13 +123,13 @@ func Connect(host, user, keyPath string, port int, log *logger.Logger) (*Client,
 
 func expandHome(path string) (string, error) {
 	if path == "~" {
-		return os.UserHomeDir();
+		return os.UserHomeDir()
 	}
 
 	if len(path) >= 2 && path[:2] == "~/" {
-		home, err := os.UserHomeDir();
+		home, err := os.UserHomeDir()
 		if err != nil {
-			return  "", err;
+			return "", err
 		}
 		return filepath.Join(home, path[2:]), err
 	}
@@ -138,9 +141,15 @@ func (c *Client) SetSudoPassword(password string) {
 	c.sudoPassword = password
 }
 
+func (c *Client) ClearSudoPassword() {
+	c.sudoPassword = ""
+}
 
 func (c *Client) Close() {
-	c.client.Close()
+	c.ClearSudoPassword()
+	if c.client != nil {
+		c.client.Close()
+	}
 }
 
 func (c *Client) Run(command string) error {
