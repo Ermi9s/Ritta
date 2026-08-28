@@ -23,7 +23,7 @@ source:
   # branch: main
 
 
-  # Vps info and your ssh key for log in
+# Vps info and your ssh key for log in
 server:
   host: ""
   user: deploy
@@ -31,7 +31,7 @@ server:
   key: ~/.ssh/id_ed25519
 
 
-  # Optional health check command if you have
+# Optional health check command if you have
 health:
   command: ""
 
@@ -46,7 +46,7 @@ file:
   #   to: config/app.yaml
 
 
-  # Your application specific build command 
+# Your application specific build command 
 build:
   command: ""
 
@@ -55,7 +55,7 @@ run:
   command: ""
 
 
-  # Domains to expose through the reverse proxy(optional)
+# Domains to expose through the reverse proxy(optional)
 # Add as many domains as needed
 domains:
   # - host: api.example.com
@@ -66,10 +66,13 @@ domains:
   #   port: 3000
   #   tls: true
 
+
 proxy:
+  #leave empty if you don't want to use a reverse proxy
   provider: Nginx
 
 tls:
+  #leave empty if you don't want to use TLS
   provider: letsencrypt
   email: ""
 `

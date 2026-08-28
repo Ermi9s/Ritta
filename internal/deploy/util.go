@@ -10,7 +10,7 @@ import (
 
 func (d *Deployer) configureProxy() error {
 	if len(d.Config.Domains) == 0 {
-		fmt.Println("No domains configured")
+		d.log.Info("No domains configured")
 		return nil
 	}
 
@@ -25,8 +25,8 @@ func (d *Deployer) configureProxy() error {
 
 func (d *Deployer) configureTLS() error {
 	if d.Config.TLS.Provider == "" {
-		fmt.Println("TLS not configured!");
-		return nil;
+		d.log.Info("TLS not configured!")
+		return nil
 	}
 	tlsprovider, err := proxy.NewTLSProvider(d.SSH, d.Config);
 	if err != nil {
@@ -53,7 +53,7 @@ func (d *Deployer) runSetupScript() error {
 
 	remoteScript := "/tmp/ritta-setup.sh"
 
-	fmt.Printf("Uploading setup script: %s\n", d.Config.SetupConfig.Script)
+	d.log.Infof("Uploading setup script: %s", d.Config.SetupConfig.Script)
 	if err := d.SSH.Upload(localScript, remoteScript); err != nil {
 		return fmt.Errorf("uploading setup script: %w", err)
 	}
@@ -62,13 +62,16 @@ func (d *Deployer) runSetupScript() error {
 		_ = d.SSH.Run(fmt.Sprintf("rm -f %q", remoteScript))
 	}()
 
-	fmt.Println("Running setup script...")
-	command := fmt.Sprintf("chmod +x %q && %q", remoteScript, remoteScript)
+	d.log.Info("Running setup script...")
+	command := fmt.Sprintf("chmod +x %q", remoteScript)
 
 	if err := d.SSH.Run(command); err != nil {
-		return fmt.Errorf("setup script failed: %w", err)
+		return fmt.Errorf("making setup script executable: %w", err)
 	}
 
+	if err := d.SSH.RunSudo(remoteScript); err != nil {
+		return fmt.Errorf("setup script failed: %w", err)
+	}
 	return nil
 }
 
@@ -84,7 +87,7 @@ func (d *Deployer) prepareSource() error {
 }
 
 func (d *Deployer) prepareExistingSource() error {
-	fmt.Println("Using existing application directory...")
+	d.log.Info("Using existing application directory...")
 
 	command := fmt.Sprintf("test -d %q", d.Config.RemoteProjectRoot)
 
@@ -100,7 +103,7 @@ func (d *Deployer) prepareGitSource() error {
 	repository := d.Config.Source.Repository
 	branch := d.Config.Source.Branch
 
-	fmt.Println("Preparing Git repository...")
+	d.log.Info("Preparing Git repository...")
 
 	command := fmt.Sprintf(`
 	if [ -d %q/.git ]; then
@@ -109,10 +112,10 @@ func (d *Deployer) prepareGitSource() error {
 		git checkout %q &&
 		git reset --hard origin/%q
 	else
-		mkdir -p "$(dirname %q)" &&
-		git clone --branch %q %q %q
+		cd ~/%q &&
+		git clone --branch %q %q .
 	fi
-	`, root, root, branch, branch, root, branch, repository, root)
+	`, root, root, branch, branch, root, branch, repository)
 
 	return d.SSH.Run(command)
 }
@@ -120,11 +123,11 @@ func (d *Deployer) prepareGitSource() error {
 func (d *Deployer) build() error {
 	if d.Config.Build == nil ||
 		d.Config.Build.Command == "" {
-		fmt.Println("No build command configured")
+		d.log.Info("No build command configured")
 		return nil
 	}
 
-	fmt.Println("Building application...")
+	d.log.Info("Building application...")
 	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Build.Command)
 
 	return d.SSH.Run(command)
@@ -136,7 +139,7 @@ func (d *Deployer) run() error {
 		return fmt.Errorf("run command is required")
 	}
 
-	fmt.Println("Starting application...")
+	d.log.Info("Starting application...")
 	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Run.Command)
 
 	return d.SSH.Run(command)
@@ -145,11 +148,11 @@ func (d *Deployer) run() error {
 func (d *Deployer) healthCheck() error {
 	if d.Config.Health == nil ||
 		d.Config.Health.Command == "" {
-		fmt.Println("No health check configured")
+		d.log.Info("No health check configured")
 		return nil
 	}
 
-	fmt.Println("Checking application health...")
+	d.log.Info("Checking application health...")
 
 	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Health.Command)
 
@@ -157,7 +160,7 @@ func (d *Deployer) healthCheck() error {
 		return fmt.Errorf("health check failed: %w", err)
 	}
 
-	fmt.Println(":) Application is healthy")
+	d.log.Success("Application is healthy :)")
 
 	return nil
 }

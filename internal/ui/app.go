@@ -2,7 +2,6 @@ package ui
 
 import (
 	"ritta/internal/logger"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -17,7 +16,6 @@ type AppModel struct {
 	screen Screen
 	status StatusModel
 }
-
 
 
 func NewApp(log *logger.Logger) AppModel {
@@ -48,21 +46,39 @@ func (m AppModel) View() tea.View {
 		return tea.NewView("")
 	}
 
-	left := lipgloss.NewStyle().
+	const leftWidth = 44
+	const rightPadding = 3
+
+	banner := lipgloss.NewStyle().
 		PaddingTop(1).
 		Render(Banner())
 
-	rightWidth := m.status.width - 44
+	nowPlaying := lipgloss.NewStyle().
+		MarginTop(1).
+		PaddingLeft(1).
+		Foreground(lipgloss.Color("99")).
+		Render("♫  Playing\n" + "   The Astounding Eyes of Rita \n Relaxxx")
 
+	left := lipgloss.NewStyle().
+		Width(leftWidth).
+		Render(lipgloss.JoinVertical(lipgloss.Left, banner, nowPlaying))
+
+	rightWidth := m.status.width - leftWidth
 	if rightWidth < 40 {
 		rightWidth = 40
 	}
 
+	// contentWidth is what text inside the right panel can actually use
+	contentWidth := rightWidth - rightPadding
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
 	right := lipgloss.NewStyle().
 		Width(rightWidth).
-		PaddingLeft(3).
+		PaddingLeft(rightPadding).
 		PaddingTop(1).
-		Render(m.status.rightView())
+		Render(m.status.rightView(contentWidth))
 
 	content := lipgloss.JoinHorizontal(
 		lipgloss.Top,

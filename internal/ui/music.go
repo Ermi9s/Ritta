@@ -41,8 +41,6 @@ func NewMusicPlayer(log *logger.Logger) (*MusicPlayer, error) {
 		return nil, err
 	}
 
-	log.Debug("Music player initialized")
-
 	return &MusicPlayer{
 		file: file.Name(),
 		log:  log,
