@@ -1,9 +1,11 @@
 package ssh
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +22,6 @@ type Client struct {
 	log          *logger.Logger
 	sudoPassword string
 }
-
 
 func Connect(host, user, keyPath string, port int, log *logger.Logger) (*Client, error) {
 	keyPath, err := expandHome(keyPath)
@@ -78,18 +79,16 @@ func Connect(host, user, keyPath string, port int, log *logger.Logger) (*Client,
 		)
 	}
 
-	knownHosts := filepath.Join(
-		home,
-		".ssh",
-		"known_hosts",
-	)
+	sshDir := filepath.Join(home, ".ssh")
+	knownHostsPath := filepath.Join(sshDir, "known_hosts")
 
-	hostKeyCallback, err := knownhosts.New(knownHosts)
+	if err := ensureKnownHostsFile(sshDir, knownHostsPath); err != nil {
+		return nil, err
+	}
+
+	hostKeyCallback, err := buildHostKeyCallback(knownHostsPath)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"loading known_hosts: %w",
-			err,
-		)
+		return nil, fmt.Errorf("loading known_hosts: %w", err)
 	}
 
 	config := &gossh.ClientConfig{
@@ -119,6 +118,96 @@ func Connect(host, user, keyPath string, port int, log *logger.Logger) (*Client,
 		client: client,
 		log:    log,
 	}, nil
+}
+
+
+func ensureKnownHostsFile(sshDir, knownHostsPath string) error {
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		return fmt.Errorf("creating %s: %w", sshDir, err)
+	}
+
+	if _, err := os.Stat(knownHostsPath); errors.Is(err, os.ErrNotExist) {
+		f, err := os.OpenFile(knownHostsPath, os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("creating %s: %w", knownHostsPath, err)
+		}
+		f.Close()
+	}
+
+	return nil
+}
+
+func buildHostKeyCallback(knownHostsPath string) (gossh.HostKeyCallback, error) {
+	base, err := knownhosts.New(knownHostsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(hostname string, remote net.Addr, key gossh.PublicKey) error {
+		err := base(hostname, remote, key)
+		if err == nil {
+			return nil
+		}
+
+		var keyErr *knownhosts.KeyError
+		if !errors.As(err, &keyErr) {
+			return err
+		}
+
+		if len(keyErr.Want) > 0 {
+			return fmt.Errorf(
+				"REMOTE HOST IDENTIFICATION HAS CHANGED for %s!\n"+
+					"  ssh-keygen -R %s\n"+
+					"underlying error: %w",
+				hostname, hostname, err,
+			)
+		}
+
+		return promptAndTrustHostKey(hostname, key, knownHostsPath)
+	}, nil
+}
+
+func promptAndTrustHostKey(hostname string, key gossh.PublicKey, knownHostsPath string) error {
+	fingerprint := gossh.FingerprintSHA256(key)
+
+	fmt.Printf("The authenticity of host '%s' can't be established.\n", hostname)
+	fmt.Printf("%s key fingerprint is %s.\n", key.Type(), fingerprint)
+	fmt.Print("Are you sure you want to continue connecting (yes/no)? ")
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("reading confirmation: %w", err)
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+
+	if answer != "yes" && answer != "y" {
+		return fmt.Errorf("host key for %s not trusted; connection aborted", hostname)
+	}
+
+	if err := appendKnownHost(knownHostsPath, hostname, key); err != nil {
+		return fmt.Errorf("saving host key: %w", err)
+	}
+
+	fmt.Printf("Warning: Permanently added '%s' (%s) to the list of known hosts.\n", hostname, key.Type())
+	return nil
+}
+
+func appendKnownHost(knownHostsPath, hostname string, key gossh.PublicKey) error {
+	normalized := knownhosts.Normalize(hostname)
+	line := knownhosts.Line([]string{normalized}, key)
+
+	f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(line + "\n"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func expandHome(path string) (string, error) {
