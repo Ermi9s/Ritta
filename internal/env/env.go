@@ -14,7 +14,7 @@ type File struct {
 	To   string
 }
 
-func Deploy(client *rittaSSH.Client, cfg *config.Config) error {
+func Deploy(client *rittaSSH.Client, cfg *config.Config, scanEnv bool) error {
 	projectRoot, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting project directory: %w", err)
@@ -23,7 +23,7 @@ func Deploy(client *rittaSSH.Client, cfg *config.Config) error {
 	files := make(map[string]File)
 
 	//automatically discover .env files.
-	if cfg.ScanEnv {
+	if scanEnv {
 		discovered, err := Scan(projectRoot)
 		if err != nil {
 			return fmt.Errorf("scanning environment files: %w", err)

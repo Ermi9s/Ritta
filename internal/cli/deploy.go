@@ -15,7 +15,7 @@ import (
 )
 
 const actionDelay = 500 * time.Millisecond // just to make things epic
-
+var scanEnv bool
 
 func runDeploy(file string) error {
 	log := logger.New(1000)
@@ -41,7 +41,7 @@ func runDeploy(file string) error {
 	time.Sleep(actionDelay)
 	log.Successf("SSH connected to %s@%s", cfg.Server.User, cfg.Server.Host)
 
-	fmt.Print("Sudo password: ")
+	fmt.Printf("Sudo password for %s@%s: ", cfg.Server.User, cfg.Server.Host)
 
 	sudoPassword, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
@@ -63,7 +63,7 @@ func runDeploy(file string) error {
 
 	deployErrCh := make(chan error, 1)
 	go func() {
-		deployErrCh <- deployer.Deploy()
+		deployErrCh <- deployer.Deploy(scanEnv)
 	}()
 
 	if err := ui.RunApp(log); err != nil {
@@ -89,6 +89,14 @@ func init() {
 		"f",
 		"./",
 		"Path for the Ritta deployment configuration",
+	)
+
+	deployCmd.Flags().BoolVarP(
+		&scanEnv,
+		"scan-env",
+		"s",
+		false,
+		"Scan the environment for variables",
 	)
 
 }

@@ -25,8 +25,7 @@ func New(cfg *config.Config, sshClient *rittaSSH.Client, log *logger.Logger) *De
 
 const actionDelay = 500 * time.Millisecond // just to make things epic
 
-
-func (d *Deployer) Deploy() error {
+func (d *Deployer) Deploy(scanEnv bool) error {
 	d.log.Success("Starting deployment...")
 	time.Sleep(actionDelay)
 
@@ -45,7 +44,7 @@ func (d *Deployer) Deploy() error {
 	time.Sleep(actionDelay)
 	d.log.Success("Source ready")
 
-	if err := env.Deploy(d.SSH, d.Config); err != nil {
+	if err := env.Deploy(d.SSH, d.Config, scanEnv); err != nil {
 		d.log.Errorf("Deploying environment failed: %v", err)
 		return fmt.Errorf("deploying environment: %w", err)
 	}

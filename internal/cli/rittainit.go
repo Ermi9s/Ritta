@@ -11,6 +11,7 @@ import (
 
 var configFile string
 
+
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
 	Short: "Create a new Ritta deployment configuration",
@@ -50,10 +51,10 @@ func init() {
 
 	initCmd.Flags().StringVarP(
 		&configFile,
-		"path",
-		"p",
+		"dir",
+		"d",
 		"./",
-		"Path for the Ritta deployment configuration",
+		"Directory for the Ritta deployment configuration",
 	)
 
 }
