@@ -35,7 +35,6 @@ func TestCreateTemplate(t *testing.T) {
 		t.Fatal("expected non-nil config loaded from generated template")
 	}
 
-	// 2. Second run does not fail or overwrite modified content
 	customContent := "# Custom configuration\nlocal_project_root: /custom\n"
 	if err := os.WriteFile(configPath, []byte(customContent), 0644); err != nil {
 		t.Fatalf("failed writing custom content: %v", err)
