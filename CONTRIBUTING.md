@@ -124,8 +124,8 @@ go test ./...
 4. Write a clear commit message describing *what* and *why*.
 5. Open a Pull Request against the `main` branch.
 6. Fill in the PR template (if provided) and link any related issues.
-7. A maintainer will review your PR — please be patient and responsive to feedback.
-8. Once approved, your PR will be merged. 🎉
+7. A maintainer will review your PR, please be patient and responsive to feedback.
+8. Once approved, your PR will be merged :) 
 
 > **Breaking changes**: If your change affects the `rittaConfig.yaml` schema or
 > CLI flags, document it clearly in the PR description.
@@ -137,5 +137,3 @@ go test ./...
 - Open a [GitHub Discussion](../../discussions) for general questions.
 - Open an [Issue](../../issues) for bugs or feature requests.
 - Read the [README](README.md) for usage documentation.
-
-We're happy to help — don't hesitate to ask!
