@@ -1,8 +1,6 @@
 # Contributing to Ritta
 
-First off — **thank you** for considering contributing to Ritta! 🎉  
-It's people like you that make Ritta a great tool for the whole community.
-
+First off **thank you** for considering contributing to Ritta!
 ---
 
 ## Table of Contents
@@ -97,7 +95,7 @@ go test ./...
 ```
 
 > Unit tests do **not** require a live server. Integration tests that exercise SSH
-> and deployment steps may need environment variables set — see `internal/config/`
+> and deployment steps may need environment variables set, see `internal/config/`
 > for the expected structure.
 
 ---
