@@ -8,11 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
 var validateCmd = &cobra.Command{
 	Use:   "validate [path]",
-	Short: "Validates a deployment configuration.",
-
+	Short: ui.HomeDescriptionStyle.Render("Validate a deployment configuration"),
+	Long:  ui.HomeDescriptionStyle.Render("Validates a deployment configuration. This command checks for any issues within your configuration file before deploying."),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		targetPath := configFile
 		if len(args) > 0 {

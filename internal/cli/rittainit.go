@@ -11,11 +11,10 @@ import (
 
 var configFile string
 
-
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
-	Short: "Create a new Ritta deployment configuration",
-
+	Short: ui.HomeDescriptionStyle.Render("	Create a new Ritta deployment configuration"),
+	Long:  ui.HomeDescriptionStyle.Render("Initializes a new Ritta deployment configuration. This command creates a new rittaConfig.yaml file in the specified directory with default values."),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		targetDir := configFile
 		if len(args) > 0 {

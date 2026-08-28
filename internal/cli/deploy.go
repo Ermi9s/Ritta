@@ -83,7 +83,8 @@ func runDeploy(file string) error {
 
 var deployCmd = &cobra.Command{
 	Use:   "deploy [path]",
-	Short: "Runs the final deployment configuration.",
+	Short: ui.HomeDescriptionStyle.Render("Runs the final deployment configuration."),
+	Long:  ui.HomeDescriptionStyle.Render("Deploys your application to the remote server."),
 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDeploy(configFile)
