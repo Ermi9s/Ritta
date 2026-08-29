@@ -332,6 +332,60 @@ func (c *Client) RunSudo(command string) error {
 	return nil
 }
 
+func (c *Client) RunSudoWithStdin(command, stdin string) error {
+	session, err := c.client.NewSession()
+	if err != nil {
+		return fmt.Errorf("error creating session: %w", err)
+	}
+	defer session.Close()
+
+	// Feed sudo password first, then the actual stdin content
+	session.Stdin = strings.NewReader(c.sudoPassword + "\n" + stdin)
+
+	if c.log != nil {
+		stdoutR, stdoutW := io.Pipe()
+		stderrR, stderrW := io.Pipe()
+
+		session.Stdout = stdoutW
+		session.Stderr = stderrW
+
+		done := make(chan struct{}, 2)
+
+		go func() {
+			logger.Pipe(stdoutR, c.log, logger.Info)
+			done <- struct{}{}
+		}()
+
+		go func() {
+			logger.Pipe(stderrR, c.log, logger.Info)
+			done <- struct{}{}
+		}()
+
+		runErr := session.Run("sudo -S " + command)
+
+		stdoutW.Close()
+		stderrW.Close()
+
+		<-done
+		<-done
+
+		if runErr != nil {
+			return fmt.Errorf("command failed: %w", runErr)
+		}
+
+		return nil
+	}
+
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	if err := session.Run("sudo -S " + command); err != nil {
+		return fmt.Errorf("command failed: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) Output(command string) (string, error) {
 	session, err := c.client.NewSession()
 	if err != nil {

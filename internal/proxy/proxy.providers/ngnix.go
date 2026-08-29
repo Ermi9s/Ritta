@@ -19,25 +19,22 @@ func NewNginx(client *rittaSSH.Client) *Nginx {
 }
 
 func (n *Nginx) EnsureInstalled() error {
-	if err := n.SSH.Run("command -v nginx >/dev/null 2>&1"); err == nil {
+	if err := n.SSH.RunSudo("command -v nginx >/dev/null 2>&1 || [ -x /usr/sbin/nginx ]"); err == nil {
 		return nil
 	}
-
 	return fmt.Errorf("nginx is not installed; install it in the setup script")
 }
 
 func (n *Nginx) ConfigureDomain(domain config.Domain) error {
 	configContent := GenerateConfig(domain)
-
 	path := fmt.Sprintf("/etc/nginx/conf.d/ritta-%s.conf", domain.Host)
-	command := fmt.Sprintf("printf '%%s' %q | sudo tee %q >/dev/null", configContent, path)
 
-	if err := n.SSH.Run(command); err != nil {
+	command := fmt.Sprintf("tee %s > /dev/null", path)
+	if err := n.SSH.RunSudoWithStdin(command, configContent); err != nil {
 		return fmt.Errorf("writing nginx configuration: %w", err)
 	}
 
 	fmt.Printf(":) %s to localhost:%d\n", domain.Host, domain.Port)
-
 	return nil
 }
 
@@ -66,7 +63,7 @@ func GenerateConfig(domain config.Domain) string {
 func (n *Nginx) Test() error {
 	fmt.Println("Testing Nginx configuration...")
 
-	if err := n.SSH.Run("sudo nginx -t"); err != nil {
+	if err := n.SSH.RunSudo("nginx -t"); err != nil {
 		return fmt.Errorf("nginx configuration test failed: %w", err)
 	}
 
@@ -74,9 +71,10 @@ func (n *Nginx) Test() error {
 }
 
 func (n *Nginx) Reload() error {
-	return n.SSH.Run(
-		"sudo systemctl enable --now nginx && sudo systemctl reload nginx",
-	)
+	if err := n.SSH.RunSudo("systemctl enable --now nginx"); err != nil {
+		return err
+	}
+	return n.SSH.RunSudo("systemctl reload nginx")
 }
 
 func (n *Nginx) Configure(domains []config.Domain) error {

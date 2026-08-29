@@ -39,7 +39,7 @@ func (l *LetsEncrypt) configureDomain(client *rittaSSH.Client, host string, emai
 	fmt.Printf("Requesting TLS certificate for %s...\n", host)
 
 	command := fmt.Sprintf(
-		"sudo certbot --nginx "+
+		"certbot --nginx "+
 			"--non-interactive "+
 			"--agree-tos "+
 			"--email %q "+
@@ -49,7 +49,7 @@ func (l *LetsEncrypt) configureDomain(client *rittaSSH.Client, host string, emai
 		host,
 	)
 
-	if err := client.Run(command); err != nil {
+	if err := client.RunSudo(command); err != nil {
 		return fmt.Errorf("obtaining TLS certificate for %s: %w", host, err)
 	}
 
