@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"ritta/internal/config"
+	"ritta/internal/logger"
 	rittaSSH "ritta/internal/ssh"
 )
 
@@ -14,7 +15,7 @@ type File struct {
 	To   string
 }
 
-func Deploy(client *rittaSSH.Client, cfg *config.Config, scanEnv bool) error {
+func Deploy(client *rittaSSH.Client, cfg *config.Config, scanEnv bool, log *logger.Logger) error {
 	projectRoot, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting project directory: %w", err)
@@ -46,7 +47,7 @@ func Deploy(client *rittaSSH.Client, cfg *config.Config, scanEnv bool) error {
 	}
 
 	if len(files) == 0 {
-		fmt.Println("No environment files configured")
+		log.Info("No environment files configured")
 		return nil
 	}
 
@@ -62,7 +63,7 @@ func Deploy(client *rittaSSH.Client, cfg *config.Config, scanEnv bool) error {
 			return fmt.Errorf("environment file %q not found: %w", localPath, err)
 		}
 
-		fmt.Printf("Uploading %s to remote %s\n", file.From, remotePath)
+		log.Infof("Uploading %s to remote %s", file.From, remotePath)
 
 		if err := client.Upload(localPath, remotePath); err != nil {
 			return fmt.Errorf("uploading %s: %w", file.From, err)

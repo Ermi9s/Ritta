@@ -45,7 +45,7 @@ func (d *Deployer) Deploy(scanEnv bool) error {
 	time.Sleep(actionDelay)
 	d.log.Success("Source ready")
 
-	if err := env.Deploy(d.SSH, d.Config, scanEnv); err != nil {
+	if err := env.Deploy(d.SSH, d.Config, scanEnv, d.log); err != nil {
 		d.log.Errorf("Deploying environment failed: %v", err)
 		return fmt.Errorf("deploying environment: %w", err)
 	}

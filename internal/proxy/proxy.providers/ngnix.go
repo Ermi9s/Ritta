@@ -5,16 +5,24 @@ import (
 	"strings"
 
 	"ritta/internal/config"
-	rittaSSH "ritta/internal/ssh"
+	"ritta/internal/logger"
 )
 
-type Nginx struct {
-	SSH *rittaSSH.Client
+// fake for testing
+type sshRunner interface {
+	RunSudo(command string) error
+	RunSudoWithStdin(command, stdin string) error
 }
 
-func NewNginx(client *rittaSSH.Client) *Nginx {
+type Nginx struct {
+	SSH sshRunner
+	log *logger.Logger
+}
+
+func NewNginx(client sshRunner, log *logger.Logger) *Nginx {
 	return &Nginx{
 		SSH: client,
+		log: log,
 	}
 }
 
@@ -34,7 +42,7 @@ func (n *Nginx) ConfigureDomain(domain config.Domain) error {
 		return fmt.Errorf("writing nginx configuration: %w", err)
 	}
 
-	fmt.Printf(":) %s to localhost:%d\n", domain.Host, domain.Port)
+	n.log.Successf(":) %s to localhost:%d", domain.Host, domain.Port)
 	return nil
 }
 
@@ -61,7 +69,7 @@ func GenerateConfig(domain config.Domain) string {
 }
 
 func (n *Nginx) Test() error {
-	fmt.Println("Testing Nginx configuration...")
+	n.log.Info("Testing Nginx configuration...")
 
 	if err := n.SSH.RunSudo("nginx -t"); err != nil {
 		return fmt.Errorf("nginx configuration test failed: %w", err)
@@ -79,11 +87,11 @@ func (n *Nginx) Reload() error {
 
 func (n *Nginx) Configure(domains []config.Domain) error {
 	if len(domains) == 0 {
-		fmt.Println("No domains configured")
+		n.log.Info("No domains configured")
 		return nil
 	}
 
-	fmt.Println("Configuring Nginx...")
+	n.log.Info("Configuring Nginx...")
 
 	if err := n.EnsureInstalled(); err != nil {
 		return err
@@ -103,7 +111,7 @@ func (n *Nginx) Configure(domains []config.Domain) error {
 		return fmt.Errorf("reloading nginx: %w", err)
 	}
 
-	fmt.Println(":) Nginx configured")
+	n.log.Success(":) Nginx configured")
 
 	return nil
 }
