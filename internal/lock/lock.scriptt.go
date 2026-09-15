@@ -64,7 +64,7 @@ script := fmt.Sprintf(`
 			fi
 
 			exit 1
-			`, path, owner, owner, owner)
+			`, path, owner, owner, owner, owner)
 
 
 return script
