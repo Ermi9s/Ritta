@@ -16,7 +16,7 @@ func (d *Deployer) configureProxy() error {
 		return nil
 	}
 
-	proxyProvider := proxy.NewReverseProxy(d.SSH, d.Config)
+	proxyProvider := proxy.NewReverseProxy(d.SSH, d.Config, d.log)
 	if proxyProvider == nil {
 		return fmt.Errorf("unknown or unsupported proxy provider: %s", d.Config.Proxy.Provider)
 	}
@@ -33,7 +33,7 @@ func (d *Deployer) configureTLS() error {
 		d.log.Info("TLS not configured")
 		return nil
 	}
-	tlsprovider, err := proxy.NewTLSProvider(d.SSH, d.Config)
+	tlsprovider, err := proxy.NewTLSProvider(d.SSH, d.Config, d.log)
 	if err != nil {
 		return fmt.Errorf("creating tls provider: %w", err)
 	}

@@ -4,13 +4,16 @@ import (
 	"fmt"
 
 	"ritta/internal/config"
+	"ritta/internal/logger"
 	rittaSSH "ritta/internal/ssh"
 )
 
-type LetsEncrypt struct{}
+type LetsEncrypt struct {
+	log *logger.Logger
+}
 
-func NewLetsEncrypt() *LetsEncrypt {
-	return &LetsEncrypt{}
+func NewLetsEncrypt(log *logger.Logger) *LetsEncrypt {
+	return &LetsEncrypt{log: log}
 }
 
 func (l *LetsEncrypt) Configure(client *rittaSSH.Client, cfg *config.Config) error {
@@ -36,7 +39,7 @@ func (l *LetsEncrypt) Configure(client *rittaSSH.Client, cfg *config.Config) err
 }
 
 func (l *LetsEncrypt) configureDomain(client *rittaSSH.Client, host string, email string) error {
-	fmt.Printf("Requesting TLS certificate for %s...\n", host)
+	l.log.Infof("Requesting TLS certificate for %s...", host)
 
 	command := fmt.Sprintf(
 		"certbot --nginx "+
@@ -53,7 +56,7 @@ func (l *LetsEncrypt) configureDomain(client *rittaSSH.Client, host string, emai
 		return fmt.Errorf("obtaining TLS certificate for %s: %w", host, err)
 	}
 
-	fmt.Printf(":) TLS enabled for %s\n", host)
+	l.log.Successf(":) TLS enabled for %s", host)
 
 	return nil
 }
