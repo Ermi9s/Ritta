@@ -102,20 +102,38 @@ func (d *Deployer) prepareExistingSource() error {
 	return nil
 }
 
-func (d *Deployer) prepareGitSource() error {
-	root := d.Config.RemoteProjectRoot
-	repository := d.Config.Source.Repository
-	branch := d.Config.Source.Branch
+// wrapInDir builds a command that first cd's into root before running cmd.
+func wrapInDir(root, cmd string) string {
+	return fmt.Sprintf("cd %q && %s", root, cmd)
+}
 
-	d.log.Info("Preparing Git repository...")
+// isDaemonCommand reports whether cmd already backgrounds/manages itself
+// (e.g. via &, systemctl, pm2, docker, nohup), meaning it doesn't need to be
+// wrapped in an extra nohup by Ritta.
+func isDaemonCommand(cmd string) bool {
+	return strings.HasSuffix(cmd, "&") ||
+		strings.HasPrefix(cmd, "systemctl") ||
+		strings.HasPrefix(cmd, "service") ||
+		strings.HasPrefix(cmd, "pm2") ||
+		strings.HasPrefix(cmd, "docker") ||
+		strings.HasPrefix(cmd, "nohup")
+}
 
-	//store previous commit hash if available for rollback
-	out, err := d.SSH.Output(fmt.Sprintf("cd %q && git rev-parse HEAD 2>/dev/null || true", root))
-	if err == nil {
-		d.prevCommit = strings.TrimSpace(out)
+// buildRunCommand builds the remote command used to start the application,
+// wrapping it in nohup unless it's already a daemon-style command.
+func buildRunCommand(root, rawCmd string) string {
+	cmd := strings.TrimSpace(rawCmd)
+	if isDaemonCommand(cmd) {
+		return wrapInDir(root, cmd)
 	}
+	return wrapInDir(root, fmt.Sprintf("(nohup %s > ritta-app.log 2>&1 &)", cmd))
+}
 
-	command := fmt.Sprintf(`
+// buildGitSyncCommand builds the remote shell script that clones the
+// repository into root if it isn't already a git checkout, or fetches and
+// resets to the target branch if it is.
+func buildGitSyncCommand(root, branch, repository string) string {
+	return fmt.Sprintf(`
 	if [ -d %q/.git ]; then
 		cd %q &&
 		git fetch origin &&
@@ -127,8 +145,22 @@ func (d *Deployer) prepareGitSource() error {
 		git clone --branch %q %q .
 	fi
 	`, root, root, branch, branch, root, root, branch, repository)
+}
 
-	return d.SSH.Run(command)
+func (d *Deployer) prepareGitSource() error {
+	root := d.Config.RemoteProjectRoot
+	repository := d.Config.Source.Repository
+	branch := d.Config.Source.Branch
+
+	d.log.Info("Preparing Git repository...")
+
+	//store previous commit hash if available for rollback
+	out, err := d.SSH.Output(wrapInDir(root, "git rev-parse HEAD 2>/dev/null || true"))
+	if err == nil {
+		d.prevCommit = strings.TrimSpace(out)
+	}
+
+	return d.SSH.Run(buildGitSyncCommand(root, branch, repository))
 }
 
 func (d *Deployer) build() error {
@@ -138,7 +170,7 @@ func (d *Deployer) build() error {
 	}
 
 	d.log.Info("Building application...")
-	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Build.Command)
+	command := wrapInDir(d.Config.RemoteProjectRoot, d.Config.Build.Command)
 
 	return d.SSH.Run(command)
 }
@@ -149,21 +181,7 @@ func (d *Deployer) run() error {
 	}
 
 	d.log.Info("Starting application...")
-	runCmd := strings.TrimSpace(d.Config.Run.Command)
-
-	isDaemon := strings.HasSuffix(runCmd, "&") ||
-		strings.HasPrefix(runCmd, "systemctl") ||
-		strings.HasPrefix(runCmd, "service") ||
-		strings.HasPrefix(runCmd, "pm2") ||
-		strings.HasPrefix(runCmd, "docker") ||
-		strings.HasPrefix(runCmd, "nohup")
-
-	var command string
-	if isDaemon {
-		command = fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, runCmd)
-	} else {
-		command = fmt.Sprintf("cd %q && (nohup %s > ritta-app.log 2>&1 &)", d.Config.RemoteProjectRoot, runCmd)
-	}
+	command := buildRunCommand(d.Config.RemoteProjectRoot, d.Config.Run.Command)
 
 	return d.SSH.Run(command)
 }
@@ -175,7 +193,7 @@ func (d *Deployer) healthCheck() error {
 	}
 
 	d.log.Info("Checking application health...")
-	command := fmt.Sprintf("cd %q && %s", d.Config.RemoteProjectRoot, d.Config.Health.Command)
+	command := wrapInDir(d.Config.RemoteProjectRoot, d.Config.Health.Command)
 
 	maxAttempts := 15
 	pollInterval := 2 * time.Second
@@ -199,7 +217,7 @@ func (d *Deployer) rollback() {
 		return
 	}
 	d.log.Warningf("Rolling back to previous commit %s...", d.prevCommit)
-	rollbackCmd := fmt.Sprintf("cd %q && git checkout %q", d.Config.RemoteProjectRoot, d.prevCommit)
+	rollbackCmd := wrapInDir(d.Config.RemoteProjectRoot, fmt.Sprintf("git checkout %q", d.prevCommit))
 	if err := d.SSH.Run(rollbackCmd); err != nil {
 		d.log.Errorf("Rollback failed: %v", err)
 		return
