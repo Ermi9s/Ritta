@@ -52,7 +52,11 @@ func Deploy(client *rittaSSH.Client, cfg *config.Config, scanEnv bool) error {
 
 	for _, file := range files {
 		localPath := filepath.Join(projectRoot, file.From)
-		remotePath := filepath.Join(cfg.RemoteProjectRoot, file.To)
+
+		remotePath := file.To
+		if !filepath.IsAbs(remotePath) {
+			remotePath = filepath.Join(cfg.RemoteProjectRoot, remotePath)
+		}
 
 		if _, err := os.Stat(localPath); err != nil {
 			return fmt.Errorf("environment file %q not found: %w", localPath, err)
