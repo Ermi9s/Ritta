@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"fmt"
 	"ritta/internal/logger"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
+
+const scrollPageSize = 5
 
 type StatusModel struct {
 	width  int
@@ -19,6 +22,25 @@ type StatusModel struct {
 	log   *logger.Logger
 
 	logCh <-chan logger.Entry
+
+	scrollOffset int
+}
+
+func maxScrollOffset(entryCount int) int {
+	if entryCount == 0 {
+		return 0
+	}
+	return entryCount - 1
+}
+
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 type LogMsg struct {
@@ -77,6 +99,24 @@ func (m *StatusModel) Update(msg tea.Msg) (StatusModel, tea.Cmd) {
 					m.log.Error(err.Error())
 				}
 			}
+
+		case "up", "k":
+			m.scrollOffset = clampInt(m.scrollOffset+1, 0, maxScrollOffset(len(m.entries)))
+
+		case "down", "j":
+			m.scrollOffset = clampInt(m.scrollOffset-1, 0, maxScrollOffset(len(m.entries)))
+
+		case "pgup":
+			m.scrollOffset = clampInt(m.scrollOffset+scrollPageSize, 0, maxScrollOffset(len(m.entries)))
+
+		case "pgdown":
+			m.scrollOffset = clampInt(m.scrollOffset-scrollPageSize, 0, maxScrollOffset(len(m.entries)))
+
+		case "end", "G":
+			m.scrollOffset = 0
+
+		case "home", "g":
+			m.scrollOffset = maxScrollOffset(len(m.entries))
 
 		case "q", "ctrl+c":
 			if m.music != nil {
@@ -190,14 +230,21 @@ func (m *StatusModel) rightView(contentWidth int) string {
 		menu.WriteString(HomeDimStyle.Render("No logs yet..."))
 	} else {
 		const reservedLines = 8
+		offset := clampInt(m.scrollOffset, 0, maxScrollOffset(len(m.entries)))
+
 		maxLogLines := m.height - reservedLines
+		if offset > 0 {
+			maxLogLines--
+		}
 		if maxLogLines < 1 {
 			maxLogLines = 1
 		}
 
+		newestVisible := len(m.entries) - 1 - offset
+
 		var visible []string
 		usedLines := 0
-		for i := len(m.entries) - 1; i >= 0; i-- {
+		for i := newestVisible; i >= 0; i-- {
 			rendered := renderEntry(m.entries[i], contentWidth)
 			lines := lipgloss.Height(rendered)
 
@@ -214,6 +261,13 @@ func (m *StatusModel) rightView(contentWidth int) string {
 		}
 
 		menu.WriteString(strings.Join(visible, "\n"))
+
+		if offset > 0 {
+			menu.WriteString("\n")
+			menu.WriteString(HomeDimStyle.Render(
+				fmt.Sprintf("scrolled up · %d newer below · 'End' to jump to latest", offset),
+			))
+		}
 	}
 
 	menu.WriteString("\n\n")
@@ -222,12 +276,13 @@ func (m *StatusModel) rightView(contentWidth int) string {
 	)
 	menu.WriteString("\n\n")
 	menu.WriteString(
-		HomeDimStyle.Render("'p' Play/Pause Music    'q' Quit"),
+		HomeDimStyle.Render("'↑/↓' Scroll    'p' Play/Pause    'q' Quit"),
 	)
 
 	return menu.String()
 }
 
+// you have to have it to fully imp, don't listen to go
 func (m StatusModel) handleSelection() (StatusModel, tea.Cmd) {
 	return m, nil
 }
