@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"ritta/internal/lock"
 	"ritta/internal/config"
 	"ritta/internal/deploy"
 	"ritta/internal/logger"
@@ -17,59 +18,63 @@ import (
 var scanEnv bool
 
 func runDeploy(file string) error {
+	// setup
 	log := logger.New(1000)
 	cfg, err := config.LoadConfig(file)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
 	if err := config.Validate(cfg); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
-	log.Infof("Connecting to %s@%s...", cfg.Server.User, cfg.Server.Host)
 
+	// establish ssh connection
+	log.Infof("Connecting to %s@%s...", cfg.Server.User, cfg.Server.Host)
 	client, err := rittaSSH.Connect(cfg.Server.Host, cfg.Server.User, cfg.Server.Key, cfg.Server.Port, log)
 	if err != nil {
 		log.Errorf("Failed to connect: %v", err)
 		return fmt.Errorf("connecting to server: %w", err)
 	}
 	defer client.Close()
-
 	log.Successf("SSH connected to %s@%s", cfg.Server.User, cfg.Server.Host)
 
-	lockDir := fmt.Sprintf("/tmp/ritta-%x.lock", cfg.RemoteProjectRoot)
-	if err := client.Run(fmt.Sprintf("mkdir %s 2>/dev/null", lockDir)); err != nil {
-		return fmt.Errorf("another deployment is already in progress (lock %s exists)", lockDir)
-	}
-	defer func() {
-		_ = client.Run(fmt.Sprintf("rmdir %s 2>/dev/null || rm -rf %s", lockDir, lockDir))
-	}()
 
+	//get sudo password and authenticate
 	fmt.Printf("Sudo password for %s@%s: ", cfg.Server.User, cfg.Server.Host)
-
 	sudoPasswordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
-
 	if err != nil {
 		return fmt.Errorf("reading sudo password: %w", err)
 	}
-
 	sudoPassword := string(sudoPasswordBytes)
 	for i := range sudoPasswordBytes {
 		sudoPasswordBytes[i] = 0
 	}
-
 	client.SetSudoPassword(sudoPassword)
-
 	if err := client.AuthenticateSudo(sudoPassword); err != nil {
 		return err
 	}
-
 	log.Successf("Sudo authenticated")
 
-	deployer := deploy.New(cfg, client, log)
 
+
+	// obtain a lock to prevent concurrent RITTA deployments
+	lockPath := fmt.Sprintf("/tmp/ritta-%x.lock", cfg.RemoteProjectRoot)
+	deploymentLock := lock.NewRemoteLock(client, lockPath)
+	if err := deploymentLock.Acquire(); err != nil {
+		return err
+	}
+	defer func() {
+		if err := deploymentLock.Release(); err != nil {
+			log.Errorf("Failed to release deployment lock: %v", err)
+		}
+	}()
+
+
+
+	// run deployer 
+	deployer := deploy.New(cfg, client, log)
 	deployErrCh := make(chan error, 1)
 	go func() {
 		deployErrCh <- deployer.Deploy(scanEnv)
