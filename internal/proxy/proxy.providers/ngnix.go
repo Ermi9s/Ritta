@@ -5,14 +5,18 @@ import (
 	"strings"
 
 	"ritta/internal/config"
-	rittaSSH "ritta/internal/ssh"
 )
 
-type Nginx struct {
-	SSH *rittaSSH.Client
+type sshRunner interface {
+	RunSudo(command string) error
+	RunSudoWithStdin(command, stdin string) error
 }
 
-func NewNginx(client *rittaSSH.Client) *Nginx {
+type Nginx struct {
+	SSH sshRunner
+}
+
+func NewNginx(client sshRunner) *Nginx {
 	return &Nginx{
 		SSH: client,
 	}
