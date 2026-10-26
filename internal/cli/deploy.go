@@ -16,6 +16,7 @@ import (
 )
 
 var scanEnv bool
+var deployEnv string
 
 func runDeploy(file string) error {
 	// setup
@@ -28,7 +29,6 @@ func runDeploy(file string) error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
-
 	// establish ssh connection
 	log.Infof("Connecting to %s@%s...", cfg.Server.User, cfg.Server.Host)
 	client, err := rittaSSH.Connect(cfg.Server.Host, cfg.Server.User, cfg.Server.Key, cfg.Server.Port, log)
@@ -39,25 +39,24 @@ func runDeploy(file string) error {
 	defer client.Close()
 	log.Successf("SSH connected to %s@%s", cfg.Server.User, cfg.Server.Host)
 
-
-	//get sudo password and authenticate
-	fmt.Printf("Sudo password for %s@%s: ", cfg.Server.User, cfg.Server.Host)
-	sudoPasswordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println()
-	if err != nil {
-		return fmt.Errorf("reading sudo password: %w", err)
+	// get sudo password and authenticate if not root
+	if cfg.Server.User != "root" {
+		fmt.Printf("Sudo password for %s@%s: ", cfg.Server.User, cfg.Server.Host)
+		sudoPasswordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return fmt.Errorf("reading sudo password: %w", err)
+		}
+		sudoPassword := string(sudoPasswordBytes)
+		for i := range sudoPasswordBytes {
+			sudoPasswordBytes[i] = 0
+		}
+		client.SetSudoPassword(sudoPassword)
+		if err := client.AuthenticateSudo(sudoPassword); err != nil {
+			return err
+		}
+		log.Successf("Sudo authenticated")
 	}
-	sudoPassword := string(sudoPasswordBytes)
-	for i := range sudoPasswordBytes {
-		sudoPasswordBytes[i] = 0
-	}
-	client.SetSudoPassword(sudoPassword)
-	if err := client.AuthenticateSudo(sudoPassword); err != nil {
-		return err
-	}
-	log.Successf("Sudo authenticated")
-
-
 
 	// obtain a lock to prevent concurrent RITTA deployments
 	lockPath := fmt.Sprintf("/tmp/ritta-%x.lock", cfg.RemoteProjectRoot)
@@ -71,10 +70,9 @@ func runDeploy(file string) error {
 		}
 	}()
 
-
-
 	// run deployer 
 	deployer := deploy.New(cfg, client, log)
+	deployer.SetEnv(deployEnv)
 	deployErrCh := make(chan error, 1)
 	go func() {
 		deployErrCh <- deployer.Deploy(scanEnv)
@@ -92,7 +90,11 @@ var deployCmd = &cobra.Command{
 	Long:  ui.HomeDescriptionStyle.Render("Deploys your application to the remote server."),
 
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDeploy(configFile)
+		targetFile := configFile
+		if len(args) > 0 {
+			targetFile = args[0]
+		}
+		return runDeploy(targetFile)
 	},
 }
 
@@ -114,4 +116,10 @@ func init() {
 		"Scan the environment for variables",
 	)
 
+	deployCmd.Flags().StringVar(
+		&deployEnv,
+		"env",
+		"all",
+		"Target environment for deployment and Nginx configs (all, staging, production)",
+	)
 }
