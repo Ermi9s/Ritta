@@ -8,6 +8,9 @@ local_project_root: ./
 # Directory where the project will be deployed
 remote_project_root: ~/srv/
 
+# Local deployment directory for Nginx configs and deployment envs
+deploy_dir: ./deploy
+
 setup_config:
   # Setup script to run on the server
   # You can modify this, default is set up with apt package manager and default installs
@@ -24,11 +27,12 @@ source:
 
 
 # Vps info and your ssh key for log in
+# Sourced from .env.deploy, .env or shell environment:
 server:
-  host: ""
-  user: deploy
-  port: 22
-  key: ~/.ssh/id_ed25519
+  host: ${VPS_HOST}
+  user: ${VPS_USER:-root}
+  port: ${VPS_PORT:-22}
+  key: ${VPS_KEY}
 
 
 # Optional health check command if you have
@@ -61,10 +65,12 @@ domains:
   # - host: api.example.com
   #   port: 8000
   #   tls: true
+  #   env: production
 
   # - host: example.com
   #   port: 3000
   #   tls: true
+  #   env: production
 
 
 proxy:

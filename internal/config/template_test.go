@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"strings"
 )
 
 func TestCreateTemplate(t *testing.T) {
@@ -51,5 +52,37 @@ func TestCreateTemplate(t *testing.T) {
 	}
 	if string(content) != customContent {
 		t.Errorf("CreateTemplate overwrote existing config file")
+	}
+}
+
+func TestCreateTemplate_ScaffoldsDeployDirectoryAndGitignore(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	err := CreateTemplate(tmpDir)
+	if err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	expectedFiles := []string{
+		filepath.Join(tmpDir, "rittaConfig.yaml"),
+		filepath.Join(tmpDir, "rittaScript.sh"),
+		filepath.Join(tmpDir, "deploy", "nginx", "conf.d", "global.conf"),
+		filepath.Join(tmpDir, "deploy", "nginx", "sites-available", "app.example.com.conf"),
+		filepath.Join(tmpDir, "deploy", ".env.deploy.example"),
+		filepath.Join(tmpDir, ".gitignore"),
+	}
+
+	for _, f := range expectedFiles {
+		if _, err := os.Stat(f); os.IsNotExist(err) {
+			t.Errorf("expected file %s to be created, but it was not", f)
+		}
+	}
+
+	gitignoreContent, err := os.ReadFile(filepath.Join(tmpDir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("reading .gitignore: %v", err)
+	}
+	if !strings.Contains(string(gitignoreContent), ".env.deploy") {
+		t.Errorf("expected .gitignore to contain .env.deploy")
 	}
 }
