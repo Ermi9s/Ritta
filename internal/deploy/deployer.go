@@ -14,6 +14,7 @@ type Deployer struct {
 	SSH        *rittaSSH.Client
 	log        *logger.Logger
 	prevCommit string
+	Env        string
 }
 
 func New(cfg *config.Config, sshClient *rittaSSH.Client, log *logger.Logger) *Deployer {
@@ -22,6 +23,10 @@ func New(cfg *config.Config, sshClient *rittaSSH.Client, log *logger.Logger) *De
 		SSH:    sshClient,
 		log:    log,
 	}
+}
+
+func (d *Deployer) SetEnv(env string) {
+	d.Env = env
 }
 
 const actionDelay = 500 * time.Millisecond // just to make things epic

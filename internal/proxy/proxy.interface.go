@@ -5,11 +5,11 @@ import (
 	rittaSSH "ritta/internal/ssh"
 )
 
-
 type ProxyInterface interface {
 	EnsureInstalled() error
 	ConfigureDomain(domain config.Domain) error 
 	Configure(domains []config.Domain) error 
+	SyncNginx(deployDir string, domains []config.Domain, envFilter string) error
 	Reload() error 
 	Test() error 
 }

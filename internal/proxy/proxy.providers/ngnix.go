@@ -2,6 +2,8 @@ package proxyproviders
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"ritta/internal/config"
@@ -113,5 +115,96 @@ func (n *Nginx) Configure(domains []config.Domain) error {
 
 	n.log.Success(":) Nginx configured")
 
+	return nil
+}
+
+func (n *Nginx) SyncNginx(deployDir string, domains []config.Domain, envFilter string) error {
+	if err := n.EnsureInstalled(); err != nil {
+		return err
+	}
+
+	n.log.Info("Preparing remote Nginx directories and archiving legacy configs...")
+	preflightCmd := `mkdir -p /etc/nginx/conf.d /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www/certbot /etc/nginx/conf.d/backup-ritta && ` +
+		`chmod -R 755 /var/www/certbot && ` +
+		`([ -f /etc/nginx/conf.d/00-limit-zones.conf ] && mv /etc/nginx/conf.d/00-limit-zones.conf /etc/nginx/conf.d/backup-ritta/ 2>/dev/null || true) && ` +
+		`(for f in /etc/nginx/conf.d/ritta-*.conf; do [ -f "$f" ] && mv "$f" /etc/nginx/conf.d/backup-ritta/ 2>/dev/null || true; done)`
+
+	if err := n.SSH.RunSudo(preflightCmd); err != nil {
+		return fmt.Errorf("remote preflight: %w", err)
+	}
+
+	localConfD := filepath.Join(deployDir, "nginx", "conf.d")
+	localSitesAvail := filepath.Join(deployDir, "nginx", "sites-available")
+
+	// 1. Sync conf.d files
+	if entries, err := os.ReadDir(localConfD); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
+				content, err := os.ReadFile(filepath.Join(localConfD, e.Name()))
+				if err != nil {
+					return fmt.Errorf("reading conf.d %s: %w", e.Name(), err)
+				}
+				dest := fmt.Sprintf("/etc/nginx/conf.d/%s", e.Name())
+				if err := n.SSH.RunSudoWithStdin(fmt.Sprintf("tee %s > /dev/null", dest), string(content)); err != nil {
+					return fmt.Errorf("uploading %s: %w", dest, err)
+				}
+				n.log.Infof("Uploaded %s -> %s", e.Name(), dest)
+			}
+		}
+	}
+
+	// 2. Sync sites-available files according to envFilter
+	var enabledSites []string
+	if entries, err := os.ReadDir(localSitesAvail); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+				continue
+			}
+			name := e.Name()
+			isStaging := strings.Contains(name, "staging")
+
+			if envFilter == "staging" && !isStaging {
+				continue
+			}
+			if (envFilter == "prod" || envFilter == "production") && isStaging {
+				continue
+			}
+
+			content, err := os.ReadFile(filepath.Join(localSitesAvail, name))
+			if err != nil {
+				return fmt.Errorf("reading site config %s: %w", name, err)
+			}
+			dest := fmt.Sprintf("/etc/nginx/sites-available/%s", name)
+			if err := n.SSH.RunSudoWithStdin(fmt.Sprintf("tee %s > /dev/null", dest), string(content)); err != nil {
+				return fmt.Errorf("uploading %s: %w", dest, err)
+			}
+			n.log.Infof("Uploaded %s -> %s", name, dest)
+			enabledSites = append(enabledSites, name)
+		}
+	}
+
+	// 3. Symlink to sites-enabled
+	for _, site := range enabledSites {
+		symlinkCmd := fmt.Sprintf("ln -sf /etc/nginx/sites-available/%s /etc/nginx/sites-enabled/%s", site, site)
+		if err := n.SSH.RunSudo(symlinkCmd); err != nil {
+			return fmt.Errorf("symlinking %s: %w", site, err)
+		}
+	}
+
+	// 4. Test configuration
+	if err := n.Test(); err != nil {
+		// Rollback newly created symlinks on failure
+		for _, site := range enabledSites {
+			_ = n.SSH.RunSudo(fmt.Sprintf("rm -f /etc/nginx/sites-enabled/%s", site))
+		}
+		return fmt.Errorf("nginx validation failed, reverted symlinks: %w", err)
+	}
+
+	// 5. Reload Nginx
+	if err := n.Reload(); err != nil {
+		return fmt.Errorf("reloading nginx: %w", err)
+	}
+
+	n.log.Success(":) Nginx synchronized and reloaded successfully")
 	return nil
 }

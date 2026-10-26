@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"os"
+	"path/filepath"
 
 	"ritta/internal/config"
 	"ritta/internal/logger"
@@ -213,4 +215,46 @@ func TestNginx_Configure(t *testing.T) {
 			t.Errorf("expected Configure to stop after the failed domain (no Test/Reload), got sudo calls: %v", runner.sudoCalls)
 		}
 	})
+}
+
+func TestNginx_SyncNginx_ArchivesLegacyConfigsAndUploads(t *testing.T) {
+	runner := &fakeSSHRunner{}
+	n := NewNginx(runner, testLogger())
+
+	tmpDir := t.TempDir()
+	deployDir := filepath.Join(tmpDir, "deploy")
+	confD := filepath.Join(deployDir, "nginx", "conf.d")
+	sitesAvail := filepath.Join(deployDir, "nginx", "sites-available")
+	os.MkdirAll(confD, 0755)
+	os.MkdirAll(sitesAvail, 0755)
+
+	os.WriteFile(filepath.Join(confD, "global.conf"), []byte("server_tokens off;"), 0644)
+	os.WriteFile(filepath.Join(sitesAvail, "app.example.com.conf"), []byte("server {}"), 0644)
+
+	err := n.SyncNginx(deployDir, []config.Domain{{Host: "app.example.com", Port: 3000}}, "all")
+	if err != nil {
+		t.Fatalf("SyncNginx failed: %v", err)
+	}
+
+	foundArchive := false
+	for _, cmd := range runner.sudoCalls {
+		if strings.Contains(cmd, "backup-ritta") {
+			foundArchive = true
+			break
+		}
+	}
+	if !foundArchive {
+		t.Errorf("expected command archiving legacy ritta configs to backup-ritta")
+	}
+
+	foundSitesAvailable := false
+	for _, cmd := range runner.sudoStdinCalls {
+		if strings.Contains(cmd, "/etc/nginx/sites-available/app.example.com.conf") {
+			foundSitesAvailable = true
+			break
+		}
+	}
+	if !foundSitesAvailable {
+		t.Errorf("expected upload to /etc/nginx/sites-available/app.example.com.conf")
+	}
 }

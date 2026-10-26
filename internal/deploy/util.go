@@ -11,7 +11,7 @@ import (
 )
 
 func (d *Deployer) configureProxy() error {
-	if len(d.Config.Domains) == 0 || d.Config.Proxy == nil || d.Config.Proxy.Provider == "" {
+	if (len(d.Config.Domains) == 0 && d.Config.DeployDir == "") || d.Config.Proxy == nil || d.Config.Proxy.Provider == "" {
 		d.log.Info("No reverse proxy or domains configured")
 		return nil
 	}
@@ -19,6 +19,18 @@ func (d *Deployer) configureProxy() error {
 	proxyProvider := proxy.NewReverseProxy(d.SSH, d.Config, d.log)
 	if proxyProvider == nil {
 		return fmt.Errorf("unknown or unsupported proxy provider: %s", d.Config.Proxy.Provider)
+	}
+
+	deployDir := d.Config.DeployDir
+	if deployDir == "" {
+		deployDir = "./deploy"
+	}
+	nginxDir := filepath.Join(deployDir, "nginx")
+	if fi, err := os.Stat(nginxDir); err == nil && fi.IsDir() {
+		if err := proxyProvider.SyncNginx(deployDir, d.Config.Domains, d.Env); err != nil {
+			return fmt.Errorf("synchronizing nginx: %w", err)
+		}
+		return nil
 	}
 
 	if err := proxyProvider.Configure(d.Config.Domains); err != nil {
