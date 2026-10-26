@@ -3,6 +3,7 @@ package config
 type Config struct {
 	LocalProjectRoot  string      `yaml:"local_project_root"`
 	RemoteProjectRoot string      `yaml:"remote_project_root"`
+	DeployDir         string      `yaml:"deploy_dir"`
 	Source            Source      `yaml:"source"`
 	Server            Server      `yaml:"server"`
 	SetupConfig       SetupConfig `yaml:"setup_config"`
@@ -42,6 +43,7 @@ type Domain struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
 	TLS  bool   `yaml:"tls"`
+	Env  string `yaml:"env"`
 }
 
 type Proxy struct {
