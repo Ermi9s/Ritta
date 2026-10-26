@@ -8,6 +8,10 @@ import (
 	rittaSSH "ritta/internal/ssh"
 )
 
+type sshRunner interface {
+	RunSudo(command string) error
+}
+
 type LetsEncrypt struct {
 	log *logger.Logger
 }
@@ -17,6 +21,10 @@ func NewLetsEncrypt(log *logger.Logger) *LetsEncrypt {
 }
 
 func (l *LetsEncrypt) Configure(client *rittaSSH.Client, cfg *config.Config) error {
+	return l.EnsureCertificates(client, cfg)
+}
+
+func (l *LetsEncrypt) EnsureCertificates(client sshRunner, cfg *config.Config) error {
 	if cfg.TLS == nil {
 		return nil
 	}
@@ -26,11 +34,7 @@ func (l *LetsEncrypt) Configure(client *rittaSSH.Client, cfg *config.Config) err
 			continue
 		}
 
-		if err := l.configureDomain(
-			client,
-			domain.Host,
-			cfg.TLS.Email,
-		); err != nil {
+		if err := l.ensureDomainCertificate(client, domain.Host, cfg.TLS.Email); err != nil {
 			return err
 		}
 	}
@@ -38,25 +42,48 @@ func (l *LetsEncrypt) Configure(client *rittaSSH.Client, cfg *config.Config) err
 	return nil
 }
 
-func (l *LetsEncrypt) configureDomain(client *rittaSSH.Client, host string, email string) error {
-	l.log.Infof("Requesting TLS certificate for %s...", host)
+func (l *LetsEncrypt) ensureDomainCertificate(client sshRunner, host string, email string) error {
+	checkCmd := fmt.Sprintf("test -f /etc/letsencrypt/live/%s/fullchain.pem", host)
+	if err := client.RunSudo(checkCmd); err == nil {
+		l.log.Infof("Certificate for %s already exists, skipping issue.", host)
+		return nil
+	}
+
+	l.log.Infof("Bootstrapping TLS certificate for %s via webroot...", host)
+
+	if err := client.RunSudo("mkdir -p /var/www/certbot && chmod -R 755 /var/www/certbot"); err != nil {
+		return fmt.Errorf("preparing webroot directory: %w", err)
+	}
+
+	var emailFlag string
+	if email != "" {
+		emailFlag = fmt.Sprintf("--email %q", email)
+	} else {
+		emailFlag = "--register-unsafely-without-email"
+	}
 
 	command := fmt.Sprintf(
-		"certbot --nginx "+
+		"certbot certonly --webroot -w /var/www/certbot "+
 			"--non-interactive "+
 			"--agree-tos "+
-			"--email %q "+
-			"-d %q "+
-			"--redirect",
-		email,
+			"%s "+
+			"-d %q",
+		emailFlag,
 		host,
 	)
 
 	if err := client.RunSudo(command); err != nil {
-		return fmt.Errorf("obtaining TLS certificate for %s: %w", host, err)
+		// Fallback to certbot --nginx if webroot standalone challenges fail
+		fallbackCmd := fmt.Sprintf(
+			"certbot --nginx --non-interactive --agree-tos %s -d %q",
+			emailFlag,
+			host,
+		)
+		if fallbackErr := client.RunSudo(fallbackCmd); fallbackErr != nil {
+			return fmt.Errorf("obtaining TLS certificate for %s: %w (fallback error: %v)", host, err, fallbackErr)
+		}
 	}
 
-	l.log.Successf(":) TLS enabled for %s", host)
-
+	l.log.Successf(":) TLS certificate ready for %s", host)
 	return nil
 }
