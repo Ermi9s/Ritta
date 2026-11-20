@@ -2,6 +2,11 @@ package tlsproviders
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
 
 	"ritta/internal/config"
 	"ritta/internal/logger"
@@ -29,12 +34,43 @@ func (l *LetsEncrypt) EnsureCertificates(client sshRunner, cfg *config.Config) e
 		return nil
 	}
 
+	hostsMap := make(map[string]bool)
 	for _, domain := range cfg.Domains {
-		if !domain.TLS {
-			continue
+		if domain.TLS && domain.Host != "" {
+			hostsMap[domain.Host] = true
 		}
+	}
 
-		if err := l.ensureDomainCertificate(client, domain.Host, cfg.TLS.Email); err != nil {
+	// Discover domains requiring SSL certificates from deploy/nginx/sites-available
+	deployDir := cfg.DeployDir
+	if deployDir == "" {
+		deployDir = "./deploy"
+	}
+	sitesAvail := filepath.Join(deployDir, "nginx", "sites-available")
+	if entries, err := os.ReadDir(sitesAvail); err == nil {
+		certRegex := regexp.MustCompile(`/etc/letsencrypt/live/([^/\s"';]+)/`)
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
+				if content, err := os.ReadFile(filepath.Join(sitesAvail, e.Name())); err == nil {
+					matches := certRegex.FindAllStringSubmatch(string(content), -1)
+					for _, m := range matches {
+						if len(m) > 1 {
+							hostsMap[m[1]] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	var hosts []string
+	for host := range hostsMap {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+
+	for _, host := range hosts {
+		if err := l.ensureDomainCertificate(client, host, cfg.TLS.Email); err != nil {
 			return err
 		}
 	}
@@ -54,6 +90,40 @@ func (l *LetsEncrypt) ensureDomainCertificate(client sshRunner, host string, ema
 	if err := client.RunSudo("mkdir -p /var/www/certbot && chmod -R 755 /var/www/certbot"); err != nil {
 		return fmt.Errorf("preparing webroot directory: %w", err)
 	}
+
+	// Ensure Nginx is enabled and running
+	_ = client.RunSudo("command -v nginx >/dev/null 2>&1 || [ -x /usr/sbin/nginx ]")
+	_ = client.RunSudo("systemctl enable --now nginx || true")
+
+	// 1. Install temporary HTTP-only bootstrap config so Nginx can respond to the ACME challenge
+	bootstrapSite := fmt.Sprintf("/etc/nginx/sites-available/ritta-bootstrap-%s.conf", host)
+	bootstrapEnabled := fmt.Sprintf("/etc/nginx/sites-enabled/ritta-bootstrap-%s.conf", host)
+	bootstrapContent := fmt.Sprintf(`server {
+    listen 80;
+    listen [::]:80;
+    server_name %s;
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+    location / {
+        return 200 "bootstrapping certificate\n";
+    }
+}
+`, host)
+
+	writeCmd := fmt.Sprintf("tee %s > /dev/null", bootstrapSite)
+	if stdinRunner, ok := client.(interface{ RunSudoWithStdin(string, string) error }); ok {
+		_ = stdinRunner.RunSudoWithStdin(writeCmd, bootstrapContent)
+	} else {
+		_ = client.RunSudo(fmt.Sprintf("echo %q > %s", bootstrapContent, bootstrapSite))
+	}
+	_ = client.RunSudo(fmt.Sprintf("ln -sf %s %s", bootstrapSite, bootstrapEnabled))
+	_ = client.RunSudo("systemctl reload nginx || systemctl restart nginx || true")
+
+	defer func() {
+		_ = client.RunSudo(fmt.Sprintf("rm -f %s %s", bootstrapEnabled, bootstrapSite))
+		_ = client.RunSudo("systemctl reload nginx || true")
+	}()
 
 	var emailFlag string
 	if email != "" {

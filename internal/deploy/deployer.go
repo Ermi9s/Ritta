@@ -81,19 +81,19 @@ func (d *Deployer) Deploy(scanEnv bool) error {
 		return fmt.Errorf("health check: %w", err)
 	}
 
-	if err := d.configureProxy(); err != nil {
-		d.log.Errorf("Configuring reverse proxy failed: %v", err)
-		return fmt.Errorf("configuring reverse proxy: %w", err)
-	}
-	time.Sleep(actionDelay)
-	d.log.Success("Reverse proxy configured")
-
 	if err := d.configureTLS(); err != nil {
 		d.log.Errorf("Configuring TLS failed: %v", err)
 		return fmt.Errorf("configuring tls: %w", err)
 	}
 	time.Sleep(actionDelay)
 	d.log.Success("TLS configured")
+
+	if err := d.configureProxy(); err != nil {
+		d.log.Errorf("Configuring reverse proxy failed: %v", err)
+		return fmt.Errorf("configuring reverse proxy: %w", err)
+	}
+	time.Sleep(actionDelay)
+	d.log.Success("Reverse proxy configured")
 
 	d.log.Success("Deployment complete! :)")
 	return nil

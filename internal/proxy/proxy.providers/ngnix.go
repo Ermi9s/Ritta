@@ -123,18 +123,38 @@ func (n *Nginx) SyncNginx(deployDir string, domains []config.Domain, envFilter s
 		return err
 	}
 
+	localConfD := filepath.Join(deployDir, "nginx", "conf.d")
+	localSitesAvail := filepath.Join(deployDir, "nginx", "sites-available")
+
 	n.log.Info("Preparing remote Nginx directories and archiving legacy configs...")
 	preflightCmd := `mkdir -p /etc/nginx/conf.d /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www/certbot /etc/nginx/conf.d/backup-ritta && ` +
 		`chmod -R 755 /var/www/certbot && ` +
-		`([ -f /etc/nginx/conf.d/00-limit-zones.conf ] && mv /etc/nginx/conf.d/00-limit-zones.conf /etc/nginx/conf.d/backup-ritta/ 2>/dev/null || true) && ` +
-		`(for f in /etc/nginx/conf.d/ritta-*.conf; do [ -f "$f" ] && mv "$f" /etc/nginx/conf.d/backup-ritta/ 2>/dev/null || true; done)`
+		`([ -f /etc/nginx/conf.d/00-limit-zones.conf ] && mv /etc/nginx/conf.d/00-limit-zones.conf /etc/nginx/conf.d/backup-ritta/ 2>/dev/null || true)`
+
+	// Target only specific project domains for legacy archival to avoid breaking co-hosted projects
+	legacyTargets := make(map[string]bool)
+	for _, d := range domains {
+		if d.Host != "" {
+			legacyTargets[d.Host] = true
+		}
+	}
+	if entries, err := os.ReadDir(localSitesAvail); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
+				base := strings.TrimSuffix(e.Name(), ".conf")
+				legacyTargets[base] = true
+			}
+		}
+	}
+
+	for host := range legacyTargets {
+		legacyFile := fmt.Sprintf("/etc/nginx/conf.d/ritta-%s.conf", host)
+		preflightCmd += fmt.Sprintf(" && ([ -f %s ] && mv %s /etc/nginx/conf.d/backup-ritta/ 2>/dev/null || true)", legacyFile, legacyFile)
+	}
 
 	if err := n.SSH.RunSudo(preflightCmd); err != nil {
 		return fmt.Errorf("remote preflight: %w", err)
 	}
-
-	localConfD := filepath.Join(deployDir, "nginx", "conf.d")
-	localSitesAvail := filepath.Join(deployDir, "nginx", "sites-available")
 
 	// 1. Sync conf.d files
 	if entries, err := os.ReadDir(localConfD); err == nil {

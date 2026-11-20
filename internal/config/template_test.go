@@ -85,4 +85,12 @@ func TestCreateTemplate_ScaffoldsDeployDirectoryAndGitignore(t *testing.T) {
 	if !strings.Contains(string(gitignoreContent), ".env.deploy") {
 		t.Errorf("expected .gitignore to contain .env.deploy")
 	}
+
+	globalConf, err := os.ReadFile(filepath.Join(tmpDir, "deploy", "nginx", "conf.d", "global.conf"))
+	if err != nil {
+		t.Fatalf("reading global.conf: %v", err)
+	}
+	if strings.Contains(string(globalConf), "server_tokens") {
+		t.Errorf("global.conf should not contain server_tokens directive to avoid duplicate directive collisions")
+	}
 }

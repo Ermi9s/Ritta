@@ -237,14 +237,20 @@ func TestNginx_SyncNginx_ArchivesLegacyConfigsAndUploads(t *testing.T) {
 	}
 
 	foundArchive := false
+	wildcardArchive := false
 	for _, cmd := range runner.sudoCalls {
-		if strings.Contains(cmd, "backup-ritta") {
+		if strings.Contains(cmd, "backup-ritta") && strings.Contains(cmd, "ritta-app.example.com.conf") {
 			foundArchive = true
-			break
+		}
+		if strings.Contains(cmd, "ritta-*.conf") {
+			wildcardArchive = true
 		}
 	}
 	if !foundArchive {
-		t.Errorf("expected command archiving legacy ritta configs to backup-ritta")
+		t.Errorf("expected command archiving legacy ritta config for app.example.com to backup-ritta")
+	}
+	if wildcardArchive {
+		t.Errorf("SyncNginx must not use wildcard ritta-*.conf archival as it breaks other co-hosted projects on the server")
 	}
 
 	foundSitesAvailable := false

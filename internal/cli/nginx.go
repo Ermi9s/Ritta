@@ -71,6 +71,15 @@ var nginxSyncCmd = &cobra.Command{
 			return fmt.Errorf("nginx proxy provider is not configured")
 		}
 
+		if cfg.TLS != nil && cfg.TLS.Provider != "" {
+			tlsProvider, err := proxy.NewTLSProvider(client, cfg, log)
+			if err == nil {
+				if err := tlsProvider.Configure(client, cfg); err != nil {
+					log.Warningf("TLS configuration warning: %v", err)
+				}
+			}
+		}
+
 		deployDir := cfg.DeployDir
 		if deployDir == "" {
 			deployDir = "./deploy"

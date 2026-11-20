@@ -36,9 +36,7 @@ echo
 echo "Setup complete."
 `
 
-const globalNginxTemplate = `server_tokens off;
-
-limit_req_zone $binary_remote_addr zone=app_general:10m rate=20r/s;
+const globalNginxTemplate = `limit_req_zone $binary_remote_addr zone=app_general:10m rate=20r/s;
 limit_req_zone $binary_remote_addr zone=app_auth:10m rate=5r/s;
 limit_conn_zone $binary_remote_addr zone=app_conn:10m;
 
