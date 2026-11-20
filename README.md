@@ -1,12 +1,13 @@
 <div align="center">
 
-# Ritta
+# Ritta 2.0
 
 **A centrally-configured, SSH-powered deployment tool built with Go.**
 
 Deploy your applications to any remote server simply, repeatably, and with style.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go)](https://golang.org/)
+[![Version](https://img.shields.io/badge/Release-v2.0.0-blue.svg)](https://github.com/your-username/ritta/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
@@ -21,6 +22,7 @@ Deploy your applications to any remote server simply, repeatably, and with style
 ## Table of Contents
 
 - [What is Ritta?](#what-is-ritta)
+- [What's New in Ritta 2.0?](#whats-new-in-ritta-20)
 - [Why Ritta?](#why-ritta)
 - [Deployment Lifecycle](#deployment-lifecycle)
 - [Supported Providers](#supported-providers)
@@ -34,10 +36,12 @@ Deploy your applications to any remote server simply, repeatably, and with style
   - [ritta init](#ritta-init)
   - [ritta validate](#ritta-validate)
   - [ritta deploy](#ritta-deploy)
+  - [ritta nginx sync](#ritta-nginx-sync)
 - [Configuration Reference (`rittaConfig.yaml`)](#configuration-reference-rittaconfigyaml)
-- [Environment & File Management](#environment--file-management)
-- [Terminal UI & Music Player](#terminal-ui--music-player)
-- [Safety & Rollback](#safety--rollback)
+- [Deployment Directory & Nginx Structure](#deployment-directory--nginx-structure)
+- [Environment & Credential Management](#environment--credential-management)
+- [Terminal UI & Scrollable Logs](#terminal-ui--scrollable-logs)
+- [Safety, Rollback & Locking](#safety-rollback--locking)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -45,38 +49,52 @@ Deploy your applications to any remote server simply, repeatably, and with style
 
 ## What is Ritta?
 
-Ritta is a lightweight CLI deployment tool that lets you describe **how** your application should be deployed in a single YAML configuration file, then provisions, builds, configures reverse proxies and TLS, and deploys to a remote server over SSH with a single command, and she even plays music for you while you wait.
+Ritta is a lightweight, modern CLI deployment tool. Describe **how** your application should be deployed in a single YAML configuration file, then let Ritta connect to your remote server over SSH, provision dependencies, deploy environment files, build and run your services, configure modular Nginx reverse proxies with automatic Let's Encrypt SSL bootstrapping, and monitor health—all while streaming real-time status in an interactive terminal UI.
+
+---
+
+## What's New in Ritta 2.0?
+
+Ritta 2.0 is a major upgrade focused on production-grade web infrastructure, modular proxy management, and deployment reliability:
+
+- 🚀 **Modular Nginx Directory Sync**: Full synchronization of local `deploy/nginx/` configs directly to remote `/etc/nginx/conf.d/` and `/etc/nginx/sites-available/` with automated symlinking to `sites-enabled/`.
+- 🌐 **Dedicated Nginx CLI Subcommand**: Run `ritta nginx sync` to update, validate, and reload reverse proxy configurations independently without triggering a full code deployment.
+- 🎯 **Environment Scoping (`--env`)**: Target specific deployment tiers (`--env staging`, `--env production`, or `--env all`) to activate matching Nginx virtual hosts and application scopes.
+- 🔒 **Two-Phase ACME/SSL Bootstrapping**: Completely solves the classic chicken-and-egg SSL deadlock on fresh servers. Bootstraps an HTTP challenge server, issues certificates via Certbot webroot mode, and seamlessly upgrades to full HTTPS.
+- 🛡️ **Multi-Tenant Safe Archival**: Scoped configuration archiving that targets only this project's domains—never disturbing co-hosted applications on the same VPS.
+- 🔄 **Automatic Nginx Validation & Rollback**: Validates new Nginx configurations with `nginx -t` before reloading; automatically reverts symlinks if syntax validation fails.
+- ⚙️ **Dynamic Variable Expansion & Smart Credential Fallbacks**: Support for `${VAR}` and `${VAR:-default}` syntax, precedence-based `.env.deploy` loading, and automatic fallbacks to standard VPS environment variables (`VPS_HOST`, `VPS_USER`, `VPS_PORT`, `VPS_KEY`).
+- 📜 **Interactive Scrollable TUI**: View real-time logs with keyboard scrolling (`↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`, `Home`/`End`), powered by thread-safe logging.
 
 ---
 
 ## Why Ritta?
 
-- **No Heavy CI/CD Infrastructure Required** – Deploy production ready apps straight from your terminal.
-- **Single Source of Truth** – One `rittaConfig.yaml` file configures everything centrally.
-- **Automated Reverse Proxy & TLS** – Automatic Nginx configuration generation and Let's Encrypt / Certbot SSL provisioning.
-- **Pluggable Architecture** – Clean provider interfaces for reverse proxies and TLS.
-- **Zero Server Runtime Dependencies** – Works over standard SSH with shell execution, no custom agents required on your remote machine.
-- **Automated Rollbacks & Concurrency Locks** – Safe deployments with git-based rollback on failure.
+- **No Heavy CI/CD Agents Required** – Deploy straight from your terminal or CI runner over standard SSH.
+- **Single Source of Truth** – Declarative `rittaConfig.yaml` controls setup, source, files, build, run, proxy, and TLS.
+- **Automated Reverse Proxy & TLS** – Out-of-the-box reverse proxy management and automated Let's Encrypt certificate provisioning.
+- **Zero Server Footprint** – No daemon or agent needs to stay running on your server.
+- **Automated Rollbacks & Concurrency Locks** – Atomic deployments with remote lockfiles (`/tmp/ritta-<hash>.lock`) and git rollbacks on failure.
 
 ---
 
 ## Deployment Lifecycle
 
-When you run `ritta deploy`, Ritta executes the following deployment jobs:
+When you run `ritta deploy`, Ritta executes the following pipeline:
 
 | Step | Phase | Description |
 |:----:|:------|:------------|
-| **1** | **Connect** | Establishes an SSH connection with key-based authentication and passphrase support |
-| **2** | **Lock** | Acquires a deployment lock (`/tmp/ritta-<hash>.lock`) on the server to prevent concurrent runs |
-| **3** | **Authenticate** | Authenticates `sudo` credentials securely via masked terminal input |
-| **4** | **Setup** | Uploads and executes your custom server script (`rittaScript.sh`) |
-| **5** | **Source** | Clones/pulls the target Git repository if you configured it to be remote or existing remote directory |
-| **6** | **Environment & Files** | Uploads configured files and scans local `.env` files if enabled (`ritta deploy --scan-env`) |
+| **1** | **Connect** | Establishes SSH connection with key-based authentication (passphrase-supported) |
+| **2** | **Lock** | Acquires a remote deployment mutex (`/tmp/ritta-<hash>.lock`) to prevent concurrent runs |
+| **3** | **Authenticate** | Authenticates `sudo` credentials if non-root (bypasses prompt for `root`) |
+| **4** | **Setup** | Uploads and executes your server provisioning script (`rittaScript.sh`) |
+| **5** | **Source** | Clones/pulls the target Git branch or verifies existing remote application directory |
+| **6** | **Environment & Files** | Uploads `.env` files and configured files via SFTP |
 | **7** | **Build** | Runs your application build command remotely |
-| **8** | **Run** | Starts your application (supports daemons, background processes, systemd, PM2, Docker) |
-| **9** | **Health check** | Polls your health check endpoint/command (if you have one) |
-| **10** | **Reverse Proxy** | Automatically configures domain reverse proxy routing |
-| **11** | **TLS** | Requests and installs SSL/TLS certificates and configures HTTPS redirection |
+| **8** | **Run** | Starts your application (supports background daemons, systemd, PM2, Docker, nohup) |
+| **9** | **Health Check** | Polls your health check command until healthy or timeout |
+| **10** | **TLS Bootstrapping** | Pre-provisions Let's Encrypt SSL certificates via webroot HTTP challenges |
+| **11** | **Reverse Proxy** | Syncs Nginx site configs, validates with `nginx -t`, and reloads the proxy |
 
 ---
 
@@ -84,27 +102,21 @@ When you run `ritta deploy`, Ritta executes the following deployment jobs:
 
 ### Reverse Proxy Providers
 
-Ritta features a pluggable reverse proxy architecture that handles virtual hosts, upstream routing, configuration testing, and service reloads.
+Ritta features a modular reverse proxy architecture handling virtual hosts, upstream routing, syntax validation, and zero-downtime reloads.
 
 | Provider | Value in `rittaConfig.yaml` | Features & Behavior |
 |:---------|:---------------------------|:--------------------|
-| **Nginx** | `nginx` | • Generates modular server blocks under `/etc/nginx/conf.d/ritta-<domain>.conf`<br>• Sets standard proxy headers (`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`)<br>• Routes incoming requests on port 80 to upstream `http://127.0.0.1:<port>`<br>• Runs syntax validation with `sudo nginx -t`<br>• Enables and reloads the service via `systemctl enable --now nginx && systemctl reload nginx` |
-
-> [!NOTE]
-> Ensure Nginx is installed on your server (default `rittaScript.sh` includes `nginx`).
+| **Nginx** | `nginx` | • Syncs `deploy/nginx/conf.d/*.conf` $\rightarrow$ `/etc/nginx/conf.d/`<br>• Syncs `deploy/nginx/sites-available/*.conf` $\rightarrow$ `/etc/nginx/sites-available/`<br>• Selectively symlinks matching sites to `/etc/nginx/sites-enabled/` based on `--env`<br>• Validates with `sudo nginx -t` and reloads via `systemctl reload nginx`<br>• Automatically rolls back symlinks if validation fails |
 
 ---
 
 ### TLS Providers
 
-Ritta automates SSL/TLS certificate provisioning and certificate renewal setup.
+Ritta automates SSL/TLS certificate issuance, challenge routing, and renewal setup.
 
 | Provider | Value in `rittaConfig.yaml` | Features & Behavior |
 |:---------|:---------------------------|:--------------------|
-| **Let's Encrypt / Certbot** | `letsencrypt` or `certbot` | • Provisions certificates via `sudo certbot --nginx`<br>• Non-interactive registration with automatic Terms of Service agreement (`--agree-tos --non-interactive`)<br>• Registers using your configured `tls.email`<br>• Automatically configures HTTPS and HTTP-to-HTTPS redirect (`--redirect`) for all domains where `tls: true` |
-
-> [!NOTE]
-> Your server must have port 80 and 443 open to the public internet, and your domain DNS records must point to your server IP for Let's Encrypt domain validation to succeed.
+| **Let's Encrypt / Certbot** | `letsencrypt` or `certbot` | • Bootstraps temporary HTTP server blocks to answer ACME challenges<br>• Obtains certificates non-interactively via `certbot certonly --webroot -w /var/www/certbot`<br>• Discovers domains from `domains` list or directly from `sites-available/*.conf`<br>• Supports `--email` or `--register-unsafely-without-email` |
 
 ---
 
@@ -113,126 +125,117 @@ Ritta automates SSL/TLS certificate provisioning and certificate renewal setup.
 ### Prerequisites
 
 - **Local Machine**:
-  - Go **1.22+** or download the binary from `bin`
+  - Go **1.22+** (if compiling from source)
   - Optional audio player for music: `mpv` or `pw-play` (PipeWire) `:)`
 - **Remote Server**:
-  - Linux server 
+  - Linux server (Ubuntu 20.04/22.04/24.04 or Debian recommended)
   - SSH access (private key authentication)
-  - Sudo user privileges
+  - Sudo or root privileges
 
 ### Installation
 
-You can download the binary at `bin` directory for fast use.
-OR
-Clone the repository and build the binary:
+Download the pre-compiled binary from the `bin` directory or releases, or build from source:
 
 ```bash
 git clone https://github.com/your-username/ritta.git
 cd ritta
-go build -o ritta ./cmd/
-```
-
-Optionally move the binary into your `$PATH`:
-
-```bash
-sudo mv ritta /usr/local/bin/
+go build -o bin/ritta cmd/main.go
+sudo cp bin/ritta /usr/local/bin/ritta
 ```
 
 ---
 
 ### Quick Start
 
-#### 1. Initialize a new deployment configuration
+#### 1. Initialize a new project
 
-Run `ritta init` in your project root or specify a target directory:
+Run `ritta init` in your project root:
 
 ```bash
 ritta init
 ```
 
-This generates two files:
-- `rittaConfig.yaml` – Main deployment configuration.
-- `rittaScript.sh` – Dependency installation script (pre-configured with execute permissions, and for ubuntu).
+This scaffolds:
+- `rittaConfig.yaml` – Central deployment configuration.
+- `rittaScript.sh` – Remote server bootstrap script.
+- `deploy/.env.deploy.example` – Deployment credentials template.
+- `deploy/nginx/conf.d/global.conf` – Shared Nginx HTTP-context directives.
+- `deploy/nginx/sites-available/app.example.com.conf` – Starter reverse proxy virtual host.
 
-#### 2. Configure `rittaConfig.yaml`
+#### 2. Configure deployment credentials
 
-Edit `rittaConfig.yaml` to match your application:
+Copy the example file and fill in your remote VPS credentials:
+
+```bash
+cp deploy/.env.deploy.example .env.deploy
+```
+
+```env
+VPS_HOST=203.0.113.10
+VPS_USER=root
+VPS_PORT=22
+VPS_KEY=~/.ssh/id_ed25519
+```
+
+> [!TIP]
+> `.env.deploy` is automatically added to `.gitignore` by `ritta init` to protect your secrets.
+
+#### 3. Customize `rittaConfig.yaml`
 
 ```yaml
-# Local project directory
 local_project_root: ./
+remote_project_root: /srv/myapp
+deploy_dir: ./deploy
 
-# Deployment directory on the remote server
-remote_project_root: /opt/myapp
-
-# Server provisioning script
 setup_config:
   script: ./rittaScript.sh
 
-# Source configuration
-# type: "git" (clone/pull from repository) or "existing" (in-place on server)
 source:
   type: git
-  repository: "https://github.com/you/yourapp.git"
+  repository: "git@github.com:you/myapp.git"
   branch: main
 
-# SSH server connection details
 server:
-  host: "203.0.113.10"
-  user: "ubuntu"
-  port: 22
-  key: "~/.ssh/id_ed25519"
+  host: ${VPS_HOST}
+  user: ${VPS_USER:-root}
+  port: ${VPS_PORT:-22}
+  key: ${VPS_KEY}
 
-# Specific files or directories to copy to the server (optional)
-file:
-  - from: ".env.production"
-    to: ".env"
-
-# Application build command executed on server (optional)
 build:
   command: "npm ci && npm run build"
 
-# Application start command executed on server
 run:
-  command: "pm2 start dist/main.js --name myapp"
+  command: "pm2 start dist/index.js --name myapp"
 
-# Application health check command (optional)
 health:
   command: "curl -sf http://localhost:3000/health"
 
-# Reverse proxy provider
 proxy:
   provider: nginx
 
-# Domain and routing mappings
 domains:
-  - host: "myapp.example.com"
+  - host: app.example.com
     port: 3000
     tls: true
+    env: production
 
-# TLS certificate provider
 tls:
   provider: letsencrypt
-  email: "you@example.com"
+  email: admin@example.com
 ```
 
-#### 3. Validate your configuration
-
-Check for configuration errors, missing fields, or invalid port ranges before deploying:
+#### 4. Validate and Deploy
 
 ```bash
+# Validate syntax and rules
 ritta validate
-```
 
-#### 4. Deploy
-
-Run the deployment pipeline:
-
-```bash
+# Deploy application
 ritta deploy
-```
 
-Ritta connects to your server, securely prompts for SSH key passphrase (if encrypted) and remote sudo password, and runs the deployment pipeline with real-time logs in the TUI.
+# Or deploy specifically to an environment tier
+ritta deploy --env production
+```
 
 ---
 
@@ -242,66 +245,44 @@ Ritta connects to your server, securely prompts for SSH key passphrase (if encry
 
 | Command | Syntax | Description |
 |:--------|:-------|:------------|
-| **`ritta`** | `ritta [flags]` | Root command; displays general help and version information |
-| **`ritta init`** | `ritta init [path] [flags]` | Scaffolds a new `rittaConfig.yaml` and `rittaScript.sh` |
-| **`ritta validate`** | `ritta validate [path] [flags]` | Validates a configuration file against schema rules |
-| **`ritta deploy`** | `ritta deploy [path] [flags]` | Executes the complete remote deployment pipeline |
+| **`ritta`** | `ritta [flags]` | Root command; displays version and help |
+| **`ritta init`** | `ritta init [path] [flags]` | Scaffolds config, setup script, and `deploy/` templates |
+| **`ritta validate`** | `ritta validate [path] [flags]` | Validates configuration files against schema rules |
+| **`ritta deploy`** | `ritta deploy [path] [flags]` | Executes the full remote deployment pipeline |
+| **`ritta nginx sync`** | `ritta nginx sync [path] [flags]` | Syncs, validates, and reloads remote Nginx configurations |
 
 ---
 
 ### `ritta init`
 
-Creates a starter `rittaConfig.yaml` and executable `rittaScript.sh` in the specified directory. If files already exist, they will not be overwritten.
+Initializes Ritta in the current directory or target path:
 
 ```bash
-ritta init [path] [flags]
+ritta init [path]
 ```
 
 **Flags:**
-- `-p, --path <string>` – Target directory for configuration files (default: `./`).
-- `-d, --dir <string>` – Alias for `--path` (default: `./`).
-- `-h, --help` – Help for `init`.
-
-**Examples:**
-```bash
-# Initialize in the current directory
-ritta init
-
-# Initialize in a specific directory
-ritta init ./deploy
-ritta init --path /path/to/project
-```
+- `-p, --path <string>` – Target directory (default: `./`).
+- `-d, --dir <string>` – Alias for `--path`.
 
 ---
 
 ### `ritta validate`
 
-Parses and validates a `rittaConfig.yaml` file, ensuring all required fields are present, source settings are valid, domain ports are between 1–65535, and configured proxy/TLS providers are supported.
+Validates required fields, port boundaries, provider types, and syntax:
 
 ```bash
-ritta validate [path] [flags]
+ritta validate [path]
 ```
 
 **Flags:**
 - `-f, --file <string>` – Path to configuration file (default: `./`).
-- `-p, --path <string>` – Alias for `--file` (default: `./`).
-- `-h, --help` – Help for `validate`.
-
-**Examples:**
-```bash
-# Validate rittaConfig.yaml in the current directory
-ritta validate
-
-# Validate a specific config file
-ritta validate ./stagingConfig.yaml
-ritta validate -f /etc/ritta/production.yaml
-```
 
 ---
 
 ### `ritta deploy`
 
-Connects to the target server via SSH, checks concurrency locks, runs setup scripts, prepares source code, uploads files, executes build & run commands, verifies health, configures reverse proxy & TLS, and streams live logs in a Bubbletea TUI.
+Executes the remote deployment pipeline:
 
 ```bash
 ritta deploy [path] [flags]
@@ -309,20 +290,41 @@ ritta deploy [path] [flags]
 
 **Flags:**
 - `-f, --file <string>` – Path to configuration file (default: `./`).
-- `-s, --scan-env` – Automatically scan and upload local `.env` files found in the project.
-- `-h, --help` – Help for `deploy`.
+- `-e, --env <string>` – Target environment filter (`all`, `staging`, `production`) (default: `all`).
+- `-s, --scan-env` – Automatically scan and upload discovered `.env` files.
 
 **Examples:**
 ```bash
-# Deploy using rittaConfig.yaml in current directory
+# Standard deployment
 ritta deploy
 
-# Deploy a specific configuration file
-ritta deploy ./rittaConfig.yaml
-ritta deploy -f ./deploy/prod.yaml
+# Target production environment only
+ritta deploy --env production
 
-# Deploy and automatically upload discovered .env files
-ritta deploy --scan-env
+# Deploy a specific config file and scan environment files
+ritta deploy staging.yaml --env staging --scan-env
+```
+
+---
+
+### `ritta nginx sync`
+
+Synchronizes local Nginx configurations to the server without running application builds or restarts:
+
+```bash
+ritta nginx sync [config] [flags]
+```
+
+**Flags:**
+- `-e, --env <string>` – Target environment filter (`all`, `staging`, `production`) (default: `all`).
+
+**Examples:**
+```bash
+# Sync all Nginx sites
+ritta nginx sync
+
+# Sync only staging virtual hosts
+ritta nginx sync --env staging
 ```
 
 ---
@@ -331,86 +333,105 @@ ritta deploy --scan-env
 
 | Field | Type | Required | Default | Description |
 |:------|:----:|:--------:|:-------:|:------------|
-| `local_project_root` | String | ✅ Yes | `.` | Root directory of the project on the local machine. |
-| `remote_project_root` | String | ✅ Yes | — | Absolute destination path on the remote server where the application resides. |
-| `setup_config.script` | String | ✅ Yes | `./rittaScript.sh` | Local path to the server bootstrap shell script executed with `sudo`. |
-| `source.type` | String | ✅ Yes | — | Source provider: `"git"` (pulls/clones repo) or `"existing"` (uses existing directory on server). |
-| `source.repository` | String | Conditional | — | Git repository URL (required if `source.type` is `"git"`). |
-| `source.branch` | String | Conditional | `main` | Git branch to checkout (used when `source.type` is `"git"`). |
-| `server.host` | String | ✅ Yes | — | Remote server IP address or hostname. |
-| `server.user` | String | ✅ Yes | — | SSH login user (must have sudo privileges). |
+| `local_project_root` | String | ✅ Yes | `.` | Root directory of the local project. |
+| `remote_project_root` | String | ✅ Yes | — | Remote destination path on the server. |
+| `deploy_dir` | String | ❌ No | `./deploy` | Path to local deployment directory containing Nginx configs and templates. |
+| `setup_config.script` | String | ❌ No | `./rittaScript.sh` | Remote provisioning shell script executed with `sudo`. |
+| `source.type` | String | ✅ Yes | — | `"git"` (pulls repository) or `"existing"` (uses current remote directory). |
+| `source.repository` | String | Conditional | — | Repository URL (required if `source.type` is `"git"`). |
+| `source.branch` | String | Conditional | `main` | Git branch to checkout. |
+| `server.host` | String | ✅ Yes | — | Server hostname or IP (supports `${VAR}` expansion). |
+| `server.user` | String | ✅ Yes | `root` | SSH user (must have sudo privileges; bypasses sudo prompt if `root`). |
 | `server.port` | Integer | ❌ No | `22` | SSH port (1–65535). |
-| `server.key` | String | ✅ Yes | `~/.ssh/id_rsa` | Path to local SSH private key (supports `~` expansion). |
-| `file` | Array | ❌ No | `[]` | List of individual files/directories to copy from local to remote. |
+| `server.key` | String | ✅ Yes | `~/.ssh/id_ed25519` | Path to local SSH private key. |
+| `file` | Array | ❌ No | `[]` | Explicit files/directories to transfer via SFTP. |
 | `file[].from` | String | Required in item | — | Source path relative to `local_project_root`. |
 | `file[].to` | String | Required in item | — | Destination path relative to `remote_project_root`. |
-| `build.command` | String | ❌ No | `""` | Command executed on server to build the app (e.g. `npm run build`, `make`). |
-| `run.command` | String | ❌ No | `""` | Command executed on server to launch the app (e.g. `pm2 start`, `docker compose up -d`). |
-| `health.command` | String | ❌ No | `""` | Command executed on server to verify health (e.g. `curl -sf http://localhost:3000/health`). |
-| `proxy.provider` | String | ❌ No | `""` | Reverse proxy provider (supported: `nginx`). |
-| `domains` | Array | ❌ No | `[]` | List of domain routing configurations. |
-| `domains[].host` | String | Required in item | — | Domain name (e.g. `api.example.com`). |
-| `domains[].port` | Integer | Required in item | — | Local application port to proxy to (1–65535). |
-| `domains[].tls` | Boolean | ❌ No | `false` | Whether to provision an SSL/TLS certificate for this domain. |
-| `tls.provider` | String | ❌ No | `""` | TLS certificate provider (supported: `letsencrypt`, `certbot`). |
-| `tls.email` | String | Conditional | `""` | Email address registered with Let's Encrypt for renewal notices. |
+| `build.command` | String | ❌ No | `""` | Remote application build command. |
+| `run.command` | String | ✅ Yes | `""` | Remote application startup command (auto-daemonized in nohup if needed). |
+| `health.command` | String | ❌ No | `""` | Command to verify application health remotely. |
+| `proxy.provider` | String | ❌ No | `""` | Reverse proxy provider (e.g. `nginx`). |
+| `domains` | Array | ❌ No | `[]` | Domain routing definitions. |
+| `domains[].host` | String | Required in item | — | Host domain (e.g. `app.example.com`). |
+| `domains[].port` | Integer | Required in item | — | Upstream port to proxy traffic to. |
+| `domains[].tls` | Boolean | ❌ No | `false` | Whether to issue an SSL certificate for this domain. |
+| `domains[].env` | String | ❌ No | `""` | Environment scope (`staging`, `production`). |
+| `tls.provider` | String | ❌ No | `""` | TLS provider (e.g. `letsencrypt`, `certbot`). |
+| `tls.email` | String | Conditional | `""` | Email for Let's Encrypt registration and notifications. |
 
 ---
 
-## Environment & File Management
+## Deployment Directory & Nginx Structure
 
-### Explicit File Uploads
+When using `deploy_dir` (default: `./deploy`), Ritta manages Nginx modularly:
 
-You can specify exact files or directories to copy from your local machine to the remote application directory using the `file` section in `rittaConfig.yaml`:
-
-```yaml
-file:
-  - from: ".env.production"
-    to: ".env"
-  - from: "./config/production.json"
-    to: "config/production.json"
+```text
+deploy/
+├── .env.deploy.example
+└── nginx/
+    ├── conf.d/
+    │   └── global.conf              # Uploaded to /etc/nginx/conf.d/global.conf
+    └── sites-available/
+        ├── app.example.com.conf     # Uploaded to /etc/nginx/sites-available/
+        └── staging.example.com.conf # Uploaded to /etc/nginx/sites-available/
 ```
 
-### Automatic `.env` Discovery
-
-Enable automatic environment file discovery by passing the `--scan-env` (`-s`) flag to `ritta deploy`.
-
-Ritta walks your local directory and uploads all `.env*` files to matching relative paths on the server, while ignoring common build and dependency folders:
-- `.git`
-- `node_modules`
-- `vendor`
-- `target`
-- `dist`
-- `build`
-
-> [!TIP]
-> Explicit entries in `file` take precedence over automatically discovered files.
+### Environment Scoping Rules
+- Site files containing `staging` in their filename are activated during `--env staging` or `--env all`.
+- Non-staging site files are activated during `--env production` or `--env all`.
+- Symlinks are created at `/etc/nginx/sites-enabled/<name>.conf` pointing to `/etc/nginx/sites-available/<name>.conf`.
 
 ---
 
+## Environment & Credential Management
 
-## Safety & Rollback
+### Variable Expansion
+`rittaConfig.yaml` supports dynamic expansion:
+```yaml
+server:
+  host: ${VPS_HOST}
+  user: ${VPS_USER:-root}
+  port: ${VPS_PORT:-22}
+  key: ${VPS_KEY}
+```
+
+### Loading Order
+Values are sourced in the following order of precedence:
+1. Environment variables exported in your current shell
+2. `.env.deploy` in project root
+3. `deploy/.env.deploy`
+4. `.env` in project root
+5. Built-in smart fallbacks (`VPS_HOST` $\rightarrow$ `SERVER_HOST`, `VPS_KEY` $\rightarrow$ `SERVER_SSH_KEY_PATH`)
+
+---
+
+## Terminal UI & Scrollable Logs
+
+Ritta provides an interactive BubbleTea terminal UI during deployments:
+
+- **Scrollable Output**: Use `↑` / `↓` or `k` / `j` to scroll line-by-line.
+- **Page Scrolling**: Use `PgUp` / `PgDn` to navigate large log outputs.
+- **Top / Bottom**: Use `Home` / `g` to jump to the top, and `End` / `G` to jump to latest logs.
+- **Thread-Safe**: Logs from SSH commands, environment scanners, and proxy providers are synchronized to prevent visual corruption.
+
+---
+
+## Safety, Rollback & Locking
 
 ### Concurrency Protection
-Before performing any action on the server, Ritta creates a deployment mutex directory `/tmp/ritta-<hash>.lock`. If another deployment is already running on the same remote path, Ritta aborts to prevent conflicts. The lock is automatically released upon completion.
+Before deploying, Ritta obtains an atomic remote lock at `/tmp/ritta-<hash>.lock`. If another deployment is active for the same remote project root, Ritta aborts immediately to avoid corrupted states. The lock is cleanly released upon completion or failure.
 
-### Automatic Git Rollbacks
-If a deployment fails during the **build**, **run**, or **health check** phases:
-1. Ritta captures the previous commit hash before updating the repository.
-2. If any step fails, Ritta automatically checks out the previous stable commit.
-3. Re-runs the build and run commands to restore your service without downtime.
+### Automatic Nginx Rollback
+If `nginx -t` validation fails during directory synchronization or domain configuration, Ritta automatically rolls back newly created symlinks in `/etc/nginx/sites-enabled/`, leaving your existing production proxy configurations intact.
+
+### Automatic Git Rollback
+If a failure occurs during the **build**, **run**, or **health check** phases of a Git-based deployment, Ritta automatically rolls back to the previous stable commit and restores the working state.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) to learn how to get started, report bugs, suggest features, and submit pull requests.
-
----
-
-## Code of Conduct
-
-This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md) (v2.1). By participating, you agree to uphold these standards.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) to learn how to get started, report issues, and submit pull requests.
 
 ---
 
