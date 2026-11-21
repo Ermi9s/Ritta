@@ -27,6 +27,8 @@ func TestExpandHome(t *testing.T) {
 	}{
 		{"bare tilde expands to home", "~", home},
 		{"tilde slash expands and joins", "~/.ssh/id_ed25519", filepath.Join(home, ".ssh/id_ed25519")},
+		{"dollar HOME slash expands and joins", "$HOME/.ssh/id_ed25519", filepath.Join(home, ".ssh/id_ed25519")},
+		{"curly dollar HOME slash expands and joins", "${HOME}/.ssh/id_ed25519", filepath.Join(home, ".ssh/id_ed25519")},
 		{"absolute path is unchanged", "/etc/ritta/key", "/etc/ritta/key"},
 		{"relative path is unchanged", "keys/id_ed25519", "keys/id_ed25519"},
 		{"tilde without slash is left alone", "~ermias", "~ermias"},

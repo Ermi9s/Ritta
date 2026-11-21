@@ -7,7 +7,7 @@
 Deploy your applications to any remote server simply, repeatably, and with style.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go)](https://golang.org/)
-[![Version](https://img.shields.io/badge/Release-v2.0.0-blue.svg)](https://github.com/your-username/ritta/releases)
+[![Version](https://img.shields.io/badge/Release-v2.0.1-blue.svg)](https://github.com/Ermi9s/Ritta/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 

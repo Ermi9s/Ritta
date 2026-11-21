@@ -211,7 +211,7 @@ func appendKnownHost(knownHostsPath, hostname string, key gossh.PublicKey) error
 }
 
 func expandHome(path string) (string, error) {
-	if path == "~" {
+	if path == "~" || path == "$HOME" || path == "${HOME}" {
 		return os.UserHomeDir()
 	}
 
@@ -221,6 +221,22 @@ func expandHome(path string) (string, error) {
 			return "", err
 		}
 		return filepath.Join(home, path[2:]), err
+	}
+
+	if strings.HasPrefix(path, "$HOME/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, path[6:]), err
+	}
+
+	if strings.HasPrefix(path, "${HOME}/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, path[8:]), err
 	}
 
 	return path, nil
